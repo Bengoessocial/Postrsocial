@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0c" />
+      <stop offset="50%" stop-color="#000000" />
+      <stop offset="100%" stop-color="#051007" />
+    </linearGradient>
+    <linearGradient id="primaryGreenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80" />
+      <stop offset="50%" stop-color="#22c55e" />
+      <stop offset="100%" stop-color="#15803d" />
+    </linearGradient>
+    <linearGradient id="accentGreenGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#16a34a" />
+      <stop offset="100%" stop-color="#22c55e" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  
+  <!-- Subtle border highlight -->
+  <rect width="508" height="508" x="2" y="2" rx="110" fill="none" stroke="rgba(34,197,94,0.2)" stroke-width="3" />
+
+  <!-- Ambient background glow behind the symbol -->
+  <circle cx="256" cy="256" r="140" fill="#22c55e" opacity="0.18" filter="url(#glow)" />
+
+  <!-- Postr Monogram "P" + AT Orbit symbol in Vibrant Green -->
+  <g transform="translate(256, 256)">
+    <!-- Decentralized Orbit Ring / @ loop segment -->
+    <path d="M -110,-10 C -110,65 -55,120 20,120 C 85,120 130,80 135,25 C 137,7 124,-8 107,-8 C 91,-8 80,4 78,16 C 73,46 45,72 10,72 C -35,72 -66,35 -66,-10 C -66,-55 -32,-92 15,-92 C 55,-92 82,-70 85,-40" 
+          fill="none" 
+          stroke="url(#accentGreenGrad)" 
+          stroke-width="24" 
+          stroke-linecap="round" 
+          opacity="0.9" />
+
+    <!-- Solid Core Postr "P" -->
+    <!-- Vertical stem -->
+    <path d="M -42,-115 L -42,115" 
+          stroke="url(#primaryGreenGrad)" 
+          stroke-width="32" 
+          stroke-linecap="round" />
+
+    <!-- Top loop of P with paper plane / post transmit notch -->
+    <path d="M -42,-115 L 20,-115 C 65,-115 100,-85 100,-40 C 100,5 65,35 20,35 L -42,35" 
+          fill="none" 
+          stroke="url(#primaryGreenGrad)" 
+          stroke-width="32" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" />
+
+    <!-- Broadcast Sparkle / Node Dot -->
+    <circle cx="36" cy="-40" r="14" fill="#4ade80" filter="url(#glow)" />
+    <circle cx="36" cy="-40" r="8" fill="#ffffff" />
+  </g>
+</svg>
