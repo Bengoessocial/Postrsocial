@@ -1,5 +1,5 @@
 /**
- * Postr Social (postersocial.app)
+ * Postr Social (postrsocial.app)
  * Modern, mobile-first Progressive Web App powered by AT Protocol (@atproto/api)
  * Standalone ESM implementation for direct browser & PWA execution.
  */
@@ -9,8 +9,12 @@ import { BskyAgent } from 'https://esm.sh/@atproto/api@0.14.8';
 // ==========================================
 // Configuration & Constants
 // ==========================================
-// Default PDS service endpoint is hardcoded to https://postersocial.app
-export const POSTR_PDS_ENDPOINT = 'https://postersocial.app';
+// Default PDS service endpoint is hardcoded to https://postrsocial.app
+export const POSTR_CONFIG = {
+  pdsHost: 'https://postrsocial.app',
+  defaultDomain: 'postrsocial.app',
+};
+export const POSTR_PDS_ENDPOINT = POSTR_CONFIG.pdsHost;
 export const BSKY_FALLBACK_PDS = 'https://bsky.social';
 const SESSION_KEY = 'postr_social_session_v1';
 
@@ -18,7 +22,7 @@ const SESSION_KEY = 'postr_social_session_v1';
 const state = {
   agent: null,
   session: null,
-  pdsEndpoint: POSTR_PDS_ENDPOINT,
+  pdsEndpoint: POSTR_CONFIG.pdsHost,
   profile: null,
   feed: [],
   activeTab: 'timeline', // 'timeline' | 'myposts'
@@ -36,9 +40,9 @@ const state = {
 
 /**
  * Resolves the user's home PDS endpoint.
- * Defaults directly to https://postersocial.app.
+ * Defaults directly to https://postrsocial.app.
  * If the user enters a specific external handle (e.g., .bsky.social or custom domain),
- * it dynamically discovers their home PDS or falls back safely to https://postersocial.app.
+ * it dynamically discovers their home PDS or falls back safely to https://postrsocial.app.
  */
 export async function resolveUserPds(identifier, manualOverride = '') {
   const trimmed = (identifier || '').trim().toLowerCase();
@@ -53,9 +57,9 @@ export async function resolveUserPds(identifier, manualOverride = '') {
     return cleanUrl.replace(/\/+$/, '');
   }
 
-  // 2. Default standard: postersocial.app
-  if (!trimmed || trimmed.endsWith('.postersocial.app') || trimmed === 'postersocial.app' || trimmed.endsWith('@postersocial.app')) {
-    return POSTR_PDS_ENDPOINT;
+  // 2. Default standard: postrsocial.app
+  if (!trimmed || trimmed.endsWith('.postrsocial.app') || trimmed === 'postrsocial.app' || trimmed.endsWith('@postrsocial.app')) {
+    return POSTR_CONFIG.pdsHost;
   }
 
   // 3. Known Bluesky network handle
@@ -130,7 +134,7 @@ export async function resolveUserPds(identifier, manualOverride = '') {
   }
 
   // Default hardcoded PDS target
-  return POSTR_PDS_ENDPOINT;
+  return POSTR_CONFIG.pdsHost;
 }
 
 // ==========================================
@@ -138,10 +142,10 @@ export async function resolveUserPds(identifier, manualOverride = '') {
 // ==========================================
 
 /**
- * Direct Password Login Flow targeting https://postersocial.app
+ * Direct Password Login Flow targeting https://postrsocial.app
  */
 export async function loginUser(identifier, password, manualPds = '') {
-  setAuthLoading(true, 'Connecting to postersocial.app...');
+  setAuthLoading(true, 'Connecting to postrsocial.app...');
   try {
     const pdsUrl = await resolveUserPds(identifier, manualPds);
     setAuthLoading(true, `Authenticating with ${new URL(pdsUrl).hostname}...`);
@@ -171,19 +175,19 @@ export async function loginUser(identifier, password, manualPds = '') {
 }
 
 /**
- * Signup Form Flow targeting https://postersocial.app (invite codes disabled)
+ * Signup Form Flow targeting https://postrsocial.app (invite codes disabled)
  */
 export async function signupUser({ email, handle, password }) {
-  setAuthLoading(true, 'Connecting to postersocial.app registration...');
+  setAuthLoading(true, 'Connecting to postrsocial.app registration...');
   try {
-    const pdsUrl = POSTR_PDS_ENDPOINT;
-    setAuthLoading(true, `Creating account on postersocial.app...`);
+    const pdsUrl = POSTR_CONFIG.pdsHost;
+    setAuthLoading(true, `Creating account on postrsocial.app...`);
 
     const agent = new BskyAgent({ service: pdsUrl });
 
     let finalHandle = handle.trim();
     if (!finalHandle.includes('.')) {
-      finalHandle = `${finalHandle}.postersocial.app`;
+      finalHandle = `${finalHandle}.postrsocial.app`;
     }
 
     const createPayload = {
@@ -196,7 +200,7 @@ export async function signupUser({ email, handle, password }) {
     const response = await agent.createAccount(createPayload);
 
     if (!response.success) {
-      throw new Error('Could not create account on postersocial.app.');
+      throw new Error('Could not create account on postrsocial.app.');
     }
 
     state.agent = agent;
@@ -233,12 +237,12 @@ export async function resumeExistingSession() {
     if (!session || !session.accessJwt) return false;
 
     showSplashMessage('Resuming Postr session...');
-    const agent = new BskyAgent({ service: pdsEndpoint || POSTR_PDS_ENDPOINT });
+    const agent = new BskyAgent({ service: pdsEndpoint || POSTR_CONFIG.pdsHost });
     await agent.resumeSession(session);
 
     state.agent = agent;
     state.session = agent.session;
-    state.pdsEndpoint = pdsEndpoint || POSTR_PDS_ENDPOINT;
+    state.pdsEndpoint = pdsEndpoint || POSTR_CONFIG.pdsHost;
 
     await onAuthSuccess();
     return true;
@@ -533,7 +537,7 @@ function renderFeedList(items) {
           </svg>
         </div>
         <p class="text-base font-semibold text-white mb-1">Your Postr feed is empty</p>
-        <p class="text-xs text-neutral-400 max-w-xs mx-auto">Be the first to share an update on postersocial.app!</p>
+        <p class="text-xs text-neutral-400 max-w-xs mx-auto">Be the first to share an update on postrsocial.app!</p>
         <button id="btn-feed-create-first" class="mt-4 px-4 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black text-xs font-bold transition shadow-lg shadow-green-950/40">
           Create First Post
         </button>
@@ -721,7 +725,7 @@ function renderFeedList(items) {
       e.preventDefault();
       const author = btn.dataset.author;
       const rkey = btn.dataset.rkey;
-      const postUrl = `https://postersocial.app/profile/${author}/post/${rkey}`;
+      const postUrl = `https://postrsocial.app/profile/${author}/post/${rkey}`;
 
       if (navigator.share) {
         try {
@@ -1009,10 +1013,10 @@ function formatErrorMessage(error) {
     return 'Invalid handle/email or password. Please verify your credentials.';
   }
   if (msg.includes('Handle not found') || msg.includes('Unable to resolve handle')) {
-    return 'Could not locate that handle on postersocial.app or the AT Protocol network.';
+    return 'Could not locate that handle on postrsocial.app or the AT Protocol network.';
   }
   if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-    return 'Network connection issue or PDS is unreachable. Verify your connection to postersocial.app.';
+    return 'Network connection issue or PDS is unreachable. Verify your connection to postrsocial.app.';
   }
   if (msg.includes('Token has expired') || msg.includes('ExpiredToken')) {
     return 'Session expired. Please sign in again.';
@@ -1117,14 +1121,14 @@ function setupEventListeners() {
       const suffix = chip.dataset.suffix;
       if (targetInput) {
         let val = targetInput.value.trim();
-        val = val.replace(/\.(postersocial\.app|bsky\.social)$/, '');
+        val = val.replace(/\.(postrsocial\.app|bsky\.social)$/, '');
         targetInput.value = val ? `${val}${suffix}` : '';
         targetInput.focus();
       }
     });
   });
 
-  // 3. Login Form Submission (hardcoded target: https://postersocial.app)
+  // 3. Login Form Submission (hardcoded target: https://postrsocial.app)
   if (formLogin) {
     formLogin.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1145,7 +1149,7 @@ function setupEventListeners() {
     });
   }
 
-  // 4. Signup Form Submission targeting https://postersocial.app (invite code disabled)
+  // 4. Signup Form Submission targeting https://postrsocial.app (invite code disabled)
   if (formSignup) {
     formSignup.addEventListener('submit', async (e) => {
       e.preventDefault();
