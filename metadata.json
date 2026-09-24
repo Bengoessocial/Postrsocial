@@ -1,6 +1,6 @@
 {
   "name": "Postr Social",
-  "description": "A clean, modern, mobile-first AT Protocol Progressive Web App for postrsocial.app.",
+  "description": "A clean, modern, mobile-first AT Protocol Progressive Web App for postersocial.app.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

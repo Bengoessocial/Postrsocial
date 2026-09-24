@@ -1,5 +1,5 @@
 /**
- * Postr Social (postrsocial.app)
+ * Postr Social (postersocial.app)
  * Modern, mobile-first Progressive Web App powered by AT Protocol (@atproto/api)
  * Standalone ESM implementation for direct browser & PWA execution.
  */
@@ -9,14 +9,15 @@ import { BskyAgent } from 'https://esm.sh/@atproto/api@0.14.8';
 // ==========================================
 // Configuration & Constants
 // ==========================================
-// Default PDS service endpoint is hardcoded to https://postrsocial.app
 export const POSTR_CONFIG = {
-  pdsHost: 'https://postrsocial.app',
-  defaultDomain: 'postrsocial.app',
+  pdsHost: 'https://postersocial.app',
+  defaultDomain: 'postersocial.app',
+  bskyFallback: 'https://bsky.social',
+  sessionKey: 'postr_social_session_v1',
 };
+
 export const POSTR_PDS_ENDPOINT = POSTR_CONFIG.pdsHost;
-export const BSKY_FALLBACK_PDS = 'https://bsky.social';
-const SESSION_KEY = 'postr_social_session_v1';
+export const BSKY_FALLBACK_PDS = POSTR_CONFIG.bskyFallback;
 
 // Global Application State
 const state = {
@@ -25,211 +26,172 @@ const state = {
   pdsEndpoint: POSTR_CONFIG.pdsHost,
   profile: null,
   feed: [],
-  activeTab: 'timeline', // 'timeline' | 'myposts'
+  activeView: 'feed', // 'feed' | 'search' | 'profile'
+  activeFeedTab: 'timeline', // 'timeline' | 'myposts'
   isResolvingPds: false,
   isSubmittingAuth: false,
   isPublishingPost: false,
   isRefreshingFeed: false,
   isOnline: navigator.onLine,
   deferredInstallPrompt: null,
+
+  // Composer attachments state
+  inlineImages: [],
+  inlineVideo: null,
+  modalImages: [],
+  modalVideo: null,
+
+  // Profile edit pending avatar
+  pendingAvatarFile: null,
+
+  // Follow tracking cache (did -> followUri or boolean)
+  followingMap: new Map(),
 };
 
 // ==========================================
-// Dynamic PDS Resolution & Endpoint Discovery
+// Dynamic PDS & Handle Resolution
 // ==========================================
-
 /**
- * Resolves the user's home PDS endpoint.
- * Defaults directly to https://postrsocial.app.
- * If the user enters a specific external handle (e.g., .bsky.social or custom domain),
- * it dynamically discovers their home PDS or falls back safely to https://postrsocial.app.
+ * Automatically discovers the user's home PDS endpoint.
+ * Defaults directly to https://postersocial.app.
  */
-export async function resolveUserPds(identifier, manualOverride = '') {
-  const trimmed = (identifier || '').trim().toLowerCase();
-  const override = (manualOverride || '').trim();
+export async function resolveUserPds(identifier) {
+  const trimmed = identifier.trim().toLowerCase();
 
-  // 1. Manual user override if explicitly provided
-  if (override) {
-    let cleanUrl = override;
-    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-      cleanUrl = 'https://' + cleanUrl;
-    }
-    return cleanUrl.replace(/\/+$/, '');
-  }
-
-  // 2. Default standard: postrsocial.app
-  if (!trimmed || trimmed.endsWith('.postrsocial.app') || trimmed === 'postrsocial.app' || trimmed.endsWith('@postrsocial.app')) {
+  // 1. If explicit postersocial.app domain
+  if (!trimmed || trimmed.endsWith('.postersocial.app') || trimmed === 'postersocial.app' || trimmed.endsWith('@postersocial.app')) {
     return POSTR_CONFIG.pdsHost;
   }
 
-  // 3. Known Bluesky network handle
-  if (trimmed.endsWith('.bsky.social')) {
-    return BSKY_FALLBACK_PDS;
+  // 2. Explicit bsky.social fallback
+  if (trimmed.endsWith('.bsky.social') || trimmed === 'bsky.social') {
+    return POSTR_CONFIG.bskyFallback;
   }
 
-  // 4. Custom domain handle resolution (e.g., user.domain.com)
-  const handle = trimmed.replace(/^@/, '');
-  if (!trimmed.includes('@') && handle.includes('.')) {
-    try {
-      let did = null;
+  // 3. Attempt dynamic resolution for custom handles
+  try {
+    let domainToQuery = trimmed;
+    if (domainToQuery.includes('@')) {
+      domainToQuery = domainToQuery.split('@')[1];
+    }
 
-      // Check standard HTTPS .well-known/atproto-did
+    if (domainToQuery.includes('.')) {
+      const wellKnownUrl = `https://${domainToQuery}/.well-known/atproto-did`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2000);
-        const res = await fetch(`https://${handle}/.well-known/atproto-did`, {
+        const res = await fetch(wellKnownUrl, {
           method: 'GET',
+          mode: 'cors',
           signal: controller.signal,
-          headers: { Accept: 'text/plain' },
         });
-        clearTimeout(timeout);
+        clearTimeout(timeoutId);
+
         if (res.ok) {
-          const txt = (await res.text()).trim();
-          if (txt.startsWith('did:plc:') || txt.startsWith('did:web:')) {
-            did = txt;
+          const did = (await res.text()).trim();
+          if (did.startsWith('did:plc:')) {
+            const plcRes = await fetch(`https://plc.directory/${did}`, { mode: 'cors' });
+            if (plcRes.ok) {
+              const plcDoc = await plcRes.json();
+              const pdsService = plcDoc.service?.find((s) => s.type === 'AtprotoPersonalDataServer');
+              if (pdsService && pdsService.serviceEndpoint) {
+                return pdsService.serviceEndpoint;
+              }
+            }
           }
         }
       } catch {
-        // Fall through to resolveHandle
+        // Fall through safely to default
       }
-
-      // Check ATProto resolveHandle endpoint
-      if (!did) {
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 2500);
-          const resolveRes = await fetch(`https://bsky.social/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`, {
-            method: 'GET',
-            signal: controller.signal,
-            headers: { Accept: 'application/json' },
-          });
-          clearTimeout(timeout);
-          if (resolveRes.ok) {
-            const data = await resolveRes.json();
-            if (data?.did) did = data.did;
-          }
-        } catch {
-          // Fall through
-        }
-      }
-
-      // If DID was resolved, find the PDS serviceEndpoint
-      if (did && did.startsWith('did:plc:')) {
-        const plcRes = await fetch(`https://plc.directory/${did}`, {
-          headers: { Accept: 'application/json' },
-        });
-        if (plcRes.ok) {
-          const doc = await plcRes.json();
-          const services = doc.services || doc.service || [];
-          const list = Array.isArray(services) ? services : Object.values(services);
-          const pds = list.find((s) => s.type === 'AtprotoPersonalDataServer' || s.id === '#atproto_pds');
-          if (pds && (pds.serviceEndpoint || pds.endpoint)) {
-            return (pds.serviceEndpoint || pds.endpoint).replace(/\/+$/, '');
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Postr Social: Dynamic resolution fallback engaged:', e.message);
     }
+  } catch (err) {
+    console.warn('Postr PDS discovery fallback triggered:', err);
   }
 
-  // Default hardcoded PDS target
   return POSTR_CONFIG.pdsHost;
 }
 
 // ==========================================
-// Authentication Engine
+// Authentication: Login, Signup, Resume, Logout
 // ==========================================
 
-/**
- * Direct Password Login Flow targeting https://postrsocial.app
- */
-export async function loginUser(identifier, password, manualPds = '') {
-  setAuthLoading(true, 'Connecting to postrsocial.app...');
+export async function loginUser(identifier, password) {
+  if (state.isSubmittingAuth) return;
+  state.isSubmittingAuth = true;
+  clearAuthError();
+  setAuthLoading(true, 'Locating PDS endpoint for ' + identifier + '...');
+
   try {
-    const pdsUrl = await resolveUserPds(identifier, manualPds);
-    setAuthLoading(true, `Authenticating with ${new URL(pdsUrl).hostname}...`);
+    const pdsEndpoint = await resolveUserPds(identifier);
+    state.pdsEndpoint = pdsEndpoint;
+    setAuthLoading(true, `Authenticating with ${pdsEndpoint.replace('https://', '')}...`);
 
-    const agent = new BskyAgent({ service: pdsUrl });
-    const response = await agent.login({
-      identifier: identifier.trim(),
-      password: password,
-    });
-
-    if (!response.success) {
-      throw new Error('Authentication was rejected by the server.');
-    }
+    const agent = new BskyAgent({ service: pdsEndpoint });
+    await agent.login({ identifier: identifier.trim(), password });
 
     state.agent = agent;
     state.session = agent.session;
-    state.pdsEndpoint = pdsUrl;
 
-    saveSession(agent.session, pdsUrl);
+    saveSession(agent.session, pdsEndpoint);
     await onAuthSuccess();
   } catch (error) {
     console.error('Postr login error:', error);
     showAuthError(formatErrorMessage(error));
   } finally {
+    state.isSubmittingAuth = false;
     setAuthLoading(false);
   }
 }
 
-/**
- * Signup Form Flow targeting https://postrsocial.app (invite codes disabled)
- */
-export async function signupUser({ email, handle, password }) {
-  setAuthLoading(true, 'Connecting to postrsocial.app registration...');
+export async function signupUser(email, handle, password) {
+  if (state.isSubmittingAuth) return;
+  state.isSubmittingAuth = true;
+  clearAuthError();
+  setAuthLoading(true, 'Connecting to postersocial.app registration...');
+
   try {
-    const pdsUrl = POSTR_CONFIG.pdsHost;
-    setAuthLoading(true, `Creating account on postrsocial.app...`);
+    const targetPds = POSTR_CONFIG.pdsHost;
+    state.pdsEndpoint = targetPds;
 
-    const agent = new BskyAgent({ service: pdsUrl });
-
-    let finalHandle = handle.trim();
+    let finalHandle = handle.trim().toLowerCase();
     if (!finalHandle.includes('.')) {
-      finalHandle = `${finalHandle}.postrsocial.app`;
+      finalHandle = `${finalHandle}.${POSTR_CONFIG.defaultDomain}`;
     }
 
-    const createPayload = {
+    setAuthLoading(true, `Creating account @${finalHandle}...`);
+    const agent = new BskyAgent({ service: targetPds });
+
+    await agent.createAccount({
       email: email.trim(),
       handle: finalHandle,
-      password: password,
-    };
+      password,
+    });
 
-    // Call com.atproto.server.createAccount directly (invite codes disabled)
-    const response = await agent.createAccount(createPayload);
-
-    if (!response.success) {
-      throw new Error('Could not create account on postrsocial.app.');
+    if (agent.session) {
+      state.agent = agent;
+      state.session = agent.session;
+      saveSession(agent.session, targetPds);
+      await onAuthSuccess();
+    } else {
+      showAuthSuccessNotice('Account created! Logging in...');
+      await agent.login({ identifier: finalHandle, password });
+      state.agent = agent;
+      state.session = agent.session;
+      saveSession(agent.session, targetPds);
+      await onAuthSuccess();
     }
-
-    state.agent = agent;
-    state.session = agent.session;
-    state.pdsEndpoint = pdsUrl;
-
-    saveSession(agent.session, pdsUrl);
-    await onAuthSuccess();
   } catch (error) {
-    console.error('Postr signup error:', error);
+    console.error('Postr account creation error:', error);
     showAuthError(formatErrorMessage(error));
   } finally {
+    state.isSubmittingAuth = false;
     setAuthLoading(false);
   }
-}
-
-export function logoutUser() {
-  localStorage.removeItem(SESSION_KEY);
-  state.agent = null;
-  state.session = null;
-  state.profile = null;
-  state.feed = [];
-
-  renderLoggedOutView();
-  showToast('Signed out of Postr Social', 'info');
 }
 
 export async function resumeExistingSession() {
-  const stored = localStorage.getItem(SESSION_KEY);
+  const stored = localStorage.getItem(POSTR_CONFIG.sessionKey);
   if (!stored) return false;
 
   try {
@@ -247,686 +209,982 @@ export async function resumeExistingSession() {
     await onAuthSuccess();
     return true;
   } catch (err) {
-    console.warn('Postr: Stored session invalid or expired:', err.message);
-    localStorage.removeItem(SESSION_KEY);
+    console.warn('Session resume expired or invalid:', err);
+    localStorage.removeItem(POSTR_CONFIG.sessionKey);
     return false;
   } finally {
-    hideSplashMessage();
+    hideSplashScreen();
   }
+}
+
+export function logoutUser() {
+  localStorage.removeItem(POSTR_CONFIG.sessionKey);
+  state.agent = null;
+  state.session = null;
+  state.profile = null;
+  state.feed = [];
+  state.followingMap.clear();
+
+  document.getElementById('auth-view')?.classList.remove('hidden');
+  document.getElementById('dashboard-view')?.classList.add('hidden');
+  document.getElementById('mobile-bottom-nav')?.classList.add('hidden');
+  switchAppView('feed');
+  showToast('Logged out of Postr Social', 'info');
 }
 
 function saveSession(session, pdsEndpoint) {
   try {
     localStorage.setItem(
-      SESSION_KEY,
-      JSON.stringify({
-        session,
-        pdsEndpoint,
-        savedAt: Date.now(),
-      })
+      POSTR_CONFIG.sessionKey,
+      JSON.stringify({ session, pdsEndpoint })
     );
   } catch (e) {
-    console.warn('Could not save session to localStorage', e);
+    console.error('Could not save session token to localStorage:', e);
   }
 }
 
 async function onAuthSuccess() {
-  hideAuthModal();
-  clearAuthError();
-  renderLoggedInView();
+  document.getElementById('auth-view')?.classList.add('hidden');
+  document.getElementById('dashboard-view')?.classList.remove('hidden');
+  document.getElementById('mobile-bottom-nav')?.classList.remove('hidden');
+
+  updatePdsBadgeUI(state.pdsEndpoint);
+  switchAppView('feed');
+
+  // Load user profile & timeline
   await loadUserProfile();
-  await loadTimelineFeed();
-  showToast(`Welcome to Postr, @${state.session.handle}!`, 'success');
+  await loadFeed('timeline');
 }
 
 // ==========================================
-// Feed & Post Creation Logic
+// User Profile & Profile Editing
 // ==========================================
 
 export async function loadUserProfile() {
   if (!state.agent || !state.session?.did) return;
+
   try {
-    const res = await state.agent.getProfile({ actor: state.session.did });
-    if (res.data) {
-      state.profile = res.data;
-      updateUserProfileUI(res.data);
-    }
+    const response = await state.agent.getProfile({ actor: state.session.did });
+    const profile = response.data;
+    state.profile = profile;
+    renderUserProfileUI(profile);
   } catch (err) {
-    console.warn('Could not load profile:', err.message);
-    updateUserProfileUI({
-      handle: state.session.handle,
-      displayName: state.session.handle,
-      avatar: null,
-    });
+    console.error('Error fetching user profile:', err);
   }
 }
 
-export async function loadTimelineFeed() {
-  if (!state.agent) return;
-  state.isRefreshingFeed = true;
-  updateFeedLoadingState(true);
+function renderUserProfileUI(profile) {
+  if (!profile) return;
+
+  // Sync avatar everywhere
+  const avatarElements = document.querySelectorAll('.user-avatar-target');
+  avatarElements.forEach((el) => {
+    if (profile.avatar) {
+      el.src = profile.avatar;
+    } else {
+      el.src = '/icon.svg';
+    }
+  });
+
+  // Sync display names
+  const nameElements = document.querySelectorAll('.user-name-target');
+  nameElements.forEach((el) => {
+    el.textContent = profile.displayName || profile.handle || 'Postr User';
+  });
+
+  // Sync handles
+  const handleElements = document.querySelectorAll('.user-handle-target');
+  handleElements.forEach((el) => {
+    el.textContent = `@${profile.handle}`;
+  });
+
+  // Sync DIDs
+  const didElements = document.querySelectorAll('.user-did-target');
+  didElements.forEach((el) => {
+    el.textContent = profile.did || '';
+    el.setAttribute('title', profile.did || '');
+  });
+
+  // Profile View Bio & Banner
+  const bioEl = document.getElementById('profile-view-bio');
+  if (bioEl) {
+    bioEl.textContent = profile.description || 'No bio provided yet. Click Edit Profile to add one.';
+  }
+
+  const bannerEl = document.getElementById('profile-banner');
+  if (bannerEl) {
+    if (profile.banner) {
+      bannerEl.style.backgroundImage = `url(${profile.banner})`;
+      bannerEl.style.backgroundSize = 'cover';
+      bannerEl.style.backgroundPosition = 'center';
+    } else {
+      bannerEl.style.backgroundImage = '';
+    }
+  }
+
+  // Counts
+  const postsCountEl = document.getElementById('user-posts-count');
+  if (postsCountEl) postsCountEl.textContent = profile.postsCount ?? '0';
+
+  const followersCountEl = document.getElementById('user-followers-count');
+  if (followersCountEl) followersCountEl.textContent = profile.followersCount ?? '0';
+
+  const followsCountEl = document.getElementById('user-follows-count');
+  if (followsCountEl) followsCountEl.textContent = profile.followsCount ?? '0';
+
+  // Seed edit profile modal fields
+  const editName = document.getElementById('edit-display-name');
+  if (editName) editName.value = profile.displayName || '';
+
+  const editBio = document.getElementById('edit-bio');
+  if (editBio) {
+    editBio.value = profile.description || '';
+    const bioCount = document.getElementById('edit-bio-char-count');
+    if (bioCount) bioCount.textContent = 256 - (profile.description?.length || 0);
+  }
+
+  const editAvatarPreview = document.getElementById('edit-profile-avatar-preview');
+  if (editAvatarPreview) {
+    editAvatarPreview.src = profile.avatar || '/icon.svg';
+  }
+}
+
+/**
+ * Updates profile details and avatar on the AT Protocol PDS.
+ */
+export async function saveProfileChanges({ displayName, description, avatarFile }) {
+  if (!state.agent) throw new Error('Agent not authenticated');
+
+  const saveBtn = document.getElementById('btn-save-profile');
+  const spinner = document.getElementById('save-profile-spinner');
+  if (saveBtn) saveBtn.disabled = true;
+  if (spinner) spinner.classList.remove('hidden');
 
   try {
-    let feedItems = [];
-    if (state.activeTab === 'timeline') {
-      const res = await state.agent.getTimeline({ limit: 40 });
-      feedItems = res.data?.feed || [];
-    } else if (state.activeTab === 'myposts') {
+    let avatarBlob = null;
+    if (avatarFile) {
+      // Upload blob
+      const blobRes = await state.agent.uploadBlob(avatarFile, {
+        encoding: avatarFile.type || 'image/jpeg',
+      });
+      avatarBlob = blobRes.data.blob;
+    }
+
+    // Call upsertProfile
+    await state.agent.upsertProfile((existing) => {
+      const updated = {
+        ...existing,
+        displayName: displayName.trim(),
+        description: description.trim(),
+      };
+      if (avatarBlob) {
+        updated.avatar = avatarBlob;
+      }
+      return updated;
+    });
+
+    state.pendingAvatarFile = null;
+    closeModal('edit-profile-modal');
+    showToast('Profile updated successfully!', 'success');
+
+    // Reload profile
+    await loadUserProfile();
+  } catch (error) {
+    console.error('Error saving profile changes:', error);
+    showToast('Failed to update profile: ' + formatErrorMessage(error), 'error');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+    if (spinner) spinner.classList.add('hidden');
+  }
+}
+
+// ==========================================
+// Social Feed: Timeline, My Posts & Rendering
+// ==========================================
+
+export async function loadFeed(tab = 'timeline') {
+  if (!state.agent) return;
+  state.activeFeedTab = tab;
+  state.isRefreshingFeed = true;
+
+  const refreshSpinner = document.getElementById('feed-refresh-spinner');
+  if (refreshSpinner) refreshSpinner.classList.remove('hidden');
+
+  const feedContainer = document.getElementById('feed-container');
+  const profilePostsContainer = document.getElementById('profile-posts-container');
+  const targetContainer = state.activeView === 'profile' ? profilePostsContainer : feedContainer;
+
+  if (targetContainer) {
+    targetContainer.innerHTML = `
+      <div class="p-8 text-center text-neutral-500 text-xs flex flex-col items-center justify-center gap-2">
+        <svg class="w-6 h-6 animate-spin text-green-500" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        <span>Loading posts from ${state.pdsEndpoint.replace('https://', '')}...</span>
+      </div>
+    `;
+  }
+
+  try {
+    let posts = [];
+    if (tab === 'timeline') {
+      const res = await state.agent.getTimeline({ limit: 35 });
+      posts = res.data.feed || [];
+    } else {
       const res = await state.agent.getAuthorFeed({
         actor: state.session.did,
-        limit: 40,
+        limit: 35,
       });
-      feedItems = res.data?.feed || [];
+      posts = res.data.feed || [];
     }
 
-    state.feed = feedItems;
-    renderFeedList(feedItems);
-  } catch (err) {
-    console.error('Error fetching feed:', err);
-    renderFeedError(formatErrorMessage(err));
+    state.feed = posts;
+    renderFeedList(posts, targetContainer);
+
+    // Also sync profile posts if we are in profile view
+    if (profilePostsContainer && targetContainer !== profilePostsContainer && tab === 'myposts') {
+      renderFeedList(posts, profilePostsContainer);
+    }
+  } catch (error) {
+    console.error('Error fetching feed:', error);
+    if (targetContainer) {
+      targetContainer.innerHTML = `
+        <div class="p-8 text-center text-neutral-400 text-xs space-y-2">
+          <p class="text-rose-400 font-semibold">Could not load posts</p>
+          <p class="text-neutral-500 text-[11px]">${formatErrorMessage(error)}</p>
+          <button id="btn-feed-retry" class="mt-3 px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-white text-xs hover:border-green-500 transition">
+            Try Again
+          </button>
+        </div>
+      `;
+      document.getElementById('btn-feed-retry')?.addEventListener('click', () => loadFeed(tab));
+    }
   } finally {
     state.isRefreshingFeed = false;
-    updateFeedLoadingState(false);
+    if (refreshSpinner) refreshSpinner.classList.add('hidden');
   }
 }
 
-export async function publishPost(text) {
-  if (!state.agent) {
-    showToast('You must be signed in to post.', 'error');
-    return false;
-  }
-  const cleanText = text.trim();
-  if (!cleanText) {
-    showToast('Post content cannot be empty.', 'warning');
-    return false;
-  }
-  if (cleanText.length > 300) {
-    showToast('Post exceeds the 300 character AT Protocol limit.', 'warning');
-    return false;
-  }
-
-  setPublishLoading(true);
-  try {
-    const record = {
-      text: cleanText,
-      createdAt: new Date().toISOString(),
-    };
-
-    await state.agent.post(record);
-    showToast('Posted successfully to Postr Social!', 'success');
-
-    const textarea = document.getElementById('composer-textarea');
-    if (textarea) {
-      textarea.value = '';
-      updateCharCounter(0, 'composer-char-count');
-    }
-    closeComposerModal();
-
-    await loadTimelineFeed();
-    return true;
-  } catch (err) {
-    console.error('Post creation error:', err);
-    showToast('Failed to post: ' + formatErrorMessage(err), 'error');
-    return false;
-  } finally {
-    setPublishLoading(false);
-  }
-}
-
-export async function toggleLikePost(postUri, postCid, currentLikeUri, btnElement) {
-  if (!state.agent) return;
-
-  try {
-    btnElement.disabled = true;
-    if (currentLikeUri) {
-      await state.agent.deleteLike(currentLikeUri);
-      btnElement.dataset.likeUri = '';
-      btnElement.classList.remove('text-green-500');
-      btnElement.classList.add('text-neutral-400');
-      const countEl = btnElement.querySelector('.like-count');
-      if (countEl) {
-        countEl.textContent = Math.max(0, parseInt(countEl.textContent || '1', 10) - 1);
-      }
-      const icon = btnElement.querySelector('svg');
-      if (icon) icon.setAttribute('fill', 'none');
-    } else {
-      const res = await state.agent.like(postUri, postCid);
-      btnElement.dataset.likeUri = res.uri;
-      btnElement.classList.add('text-green-500');
-      btnElement.classList.remove('text-neutral-400');
-      const countEl = btnElement.querySelector('.like-count');
-      if (countEl) {
-        countEl.textContent = parseInt(countEl.textContent || '0', 10) + 1;
-      }
-      const icon = btnElement.querySelector('svg');
-      if (icon) icon.setAttribute('fill', 'currentColor');
-    }
-  } catch (err) {
-    console.error('Like toggle error:', err);
-    showToast('Could not update like: ' + formatErrorMessage(err), 'error');
-  } finally {
-    btnElement.disabled = false;
-  }
-}
-
-export async function toggleRepost(postUri, postCid, currentRepostUri, btnElement) {
-  if (!state.agent) return;
-
-  try {
-    btnElement.disabled = true;
-    if (currentRepostUri) {
-      await state.agent.deleteRepost(currentRepostUri);
-      btnElement.dataset.repostUri = '';
-      btnElement.classList.remove('text-green-500');
-      btnElement.classList.add('text-neutral-400');
-      const countEl = btnElement.querySelector('.repost-count');
-      if (countEl) {
-        countEl.textContent = Math.max(0, parseInt(countEl.textContent || '1', 10) - 1);
-      }
-    } else {
-      const res = await state.agent.repost(postUri, postCid);
-      btnElement.dataset.repostUri = res.uri;
-      btnElement.classList.add('text-green-500');
-      btnElement.classList.remove('text-neutral-400');
-      const countEl = btnElement.querySelector('.repost-count');
-      if (countEl) {
-        countEl.textContent = parseInt(countEl.textContent || '0', 10) + 1;
-      }
-    }
-  } catch (err) {
-    console.error('Repost toggle error:', err);
-    showToast('Could not repost: ' + formatErrorMessage(err), 'error');
-  } finally {
-    btnElement.disabled = false;
-  }
-}
-
-// ==========================================
-// UI Rendering & Template Functions
-// ==========================================
-
-function renderLoggedOutView() {
-  const authContainer = document.getElementById('auth-view');
-  const dashboardContainer = document.getElementById('dashboard-view');
-  const mobileNav = document.getElementById('mobile-bottom-nav');
-
-  if (authContainer) authContainer.classList.remove('hidden');
-  if (dashboardContainer) dashboardContainer.classList.add('hidden');
-  if (mobileNav) mobileNav.classList.add('hidden');
-}
-
-function renderLoggedInView() {
-  const authContainer = document.getElementById('auth-view');
-  const dashboardContainer = document.getElementById('dashboard-view');
-  const mobileNav = document.getElementById('mobile-bottom-nav');
-
-  if (authContainer) authContainer.classList.add('hidden');
-  if (dashboardContainer) dashboardContainer.classList.remove('hidden');
-  if (mobileNav) mobileNav.classList.remove('hidden');
-
-  const pdsBadge = document.getElementById('active-pds-badge');
-  if (pdsBadge && state.pdsEndpoint) {
-    try {
-      const hostname = new URL(state.pdsEndpoint).hostname;
-      pdsBadge.textContent = hostname;
-      pdsBadge.title = `PDS: ${state.pdsEndpoint}`;
-    } catch {
-      pdsBadge.textContent = state.pdsEndpoint;
-    }
-  }
-}
-
-function updateUserProfileUI(profile) {
-  const avatarElements = document.querySelectorAll('.user-avatar-target');
-  const handleElements = document.querySelectorAll('.user-handle-target');
-  const nameElements = document.querySelectorAll('.user-name-target');
-  const didElements = document.querySelectorAll('.user-did-target');
-  const postsCountEl = document.getElementById('user-posts-count');
-  const followersCountEl = document.getElementById('user-followers-count');
-  const followsCountEl = document.getElementById('user-follows-count');
-
-  const avatarUrl = profile.avatar || createAvatarPlaceholder(profile.handle || 'User');
-  avatarElements.forEach((el) => {
-    if (el.tagName === 'IMG') {
-      el.src = avatarUrl;
-      el.onerror = () => {
-        el.src = createAvatarPlaceholder(profile.handle || 'User');
-      };
-    }
-  });
-
-  const displayHandle = profile.handle ? `@${profile.handle}` : '@anonymous';
-  handleElements.forEach((el) => {
-    el.textContent = displayHandle;
-  });
-
-  const displayName = profile.displayName || profile.handle || 'Postr User';
-  nameElements.forEach((el) => {
-    el.textContent = displayName;
-  });
-
-  if (didElements && state.session?.did) {
-    didElements.forEach((el) => {
-      const shortDid = state.session.did.slice(0, 14) + '...' + state.session.did.slice(-4);
-      el.textContent = shortDid;
-      el.title = state.session.did;
-    });
-  }
-
-  if (postsCountEl && typeof profile.postsCount === 'number') {
-    postsCountEl.textContent = formatNumber(profile.postsCount);
-  }
-  if (followersCountEl && typeof profile.followersCount === 'number') {
-    followersCountEl.textContent = formatNumber(profile.followersCount);
-  }
-  if (followsCountEl && typeof profile.followsCount === 'number') {
-    followsCountEl.textContent = formatNumber(profile.followsCount);
-  }
-}
-
-function renderFeedList(items) {
-  const container = document.getElementById('feed-container');
+function renderFeedList(posts, container) {
   if (!container) return;
 
-  if (!items || items.length === 0) {
+  if (!posts || posts.length === 0) {
     container.innerHTML = `
-      <div class="py-16 text-center text-neutral-400">
-        <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-neutral-900 border border-neutral-800 mb-4">
-          <svg class="w-7 h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
+      <div class="p-12 text-center text-neutral-500">
+        <div class="w-12 h-12 rounded-2xl bg-neutral-900/80 border border-neutral-800 mx-auto flex items-center justify-center mb-3 text-neutral-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
           </svg>
         </div>
         <p class="text-base font-semibold text-white mb-1">Your Postr feed is empty</p>
-        <p class="text-xs text-neutral-400 max-w-xs mx-auto">Be the first to share an update on postrsocial.app!</p>
-        <button id="btn-feed-create-first" class="mt-4 px-4 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black text-xs font-bold transition shadow-lg shadow-green-950/40">
+        <p class="text-xs text-neutral-400 max-w-xs mx-auto">Be the first to share an update on postersocial.app!</p>
+        <button class="btn-open-composer mt-4 px-4 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black text-xs font-bold transition shadow-lg shadow-green-950/40">
           Create First Post
         </button>
       </div>
     `;
-
-    const createBtn = document.getElementById('btn-feed-create-first');
-    if (createBtn) {
-      createBtn.addEventListener('click', openComposerModal);
-    }
     return;
   }
 
-  const html = items
-    .map((item) => {
-      const post = item.post;
-      if (!post) return '';
-
-      const author = post.author || {};
-      const record = post.record || {};
-      const createdAt = record.createdAt || post.indexedAt;
-      const timeAgo = formatTimeAgo(createdAt);
-      const isLiked = !!post.viewer?.like;
-      const isReposted = !!post.viewer?.repost;
-      const likeUri = post.viewer?.like || '';
-      const repostUri = post.viewer?.repost || '';
-      const text = escapeHtml(record.text || '');
-      const formattedText = linkify(text);
-
-      const avatarSrc = author.avatar || createAvatarPlaceholder(author.handle || author.displayName || 'P');
-
-      // Embedded Images (if any)
-      let embedHtml = '';
-      if (post.embed) {
-        if (post.embed.$type === 'app.bsky.embed.images#view' && Array.isArray(post.embed.images)) {
-          embedHtml = `
-            <div class="mt-3 grid gap-2 ${post.embed.images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} rounded-2xl overflow-hidden border border-neutral-800">
-              ${post.embed.images
-                .map(
-                  (img) => `
-                <a href="${escapeHtml(img.fullsize)}" target="_blank" rel="noopener noreferrer" class="block bg-neutral-900 group">
-                  <img src="${escapeHtml(img.thumb)}" alt="${escapeHtml(img.alt || 'Post attachment')}" class="w-full h-48 md:h-64 object-cover group-hover:scale-[1.01] transition duration-200" loading="lazy" />
-                </a>
-              `
-                )
-                .join('')}
-            </div>
-          `;
-        } else if (post.embed.$type === 'app.bsky.embed.external#view' && post.embed.external) {
-          const ext = post.embed.external;
-          embedHtml = `
-            <a href="${escapeHtml(ext.uri)}" target="_blank" rel="noopener noreferrer" class="mt-3 block p-3 rounded-2xl bg-neutral-900/80 border border-neutral-800 hover:border-green-500/50 transition">
-              ${ext.thumb ? `<img src="${escapeHtml(ext.thumb)}" alt="" class="w-full h-36 object-cover rounded-xl mb-2" />` : ''}
-              <div class="text-sm font-semibold text-white truncate">${escapeHtml(ext.title || ext.uri)}</div>
-              ${ext.description ? `<p class="text-xs text-neutral-400 line-clamp-2 mt-1">${escapeHtml(ext.description)}</p>` : ''}
-              <span class="text-[11px] text-green-400 mt-1 block truncate">${escapeHtml(new URL(ext.uri).hostname)}</span>
-            </a>
-          `;
-        }
-      }
-
-      // Repost Indicator banner
-      let repostHeader = '';
-      if (item.reason && item.reason.$type === 'app.bsky.feed.defs#reasonRepost') {
-        const reposter = item.reason.by;
-        repostHeader = `
-          <div class="flex items-center gap-2 text-xs font-medium text-green-400/90 mb-2 pl-12">
-            <svg class="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            <span>Reposted by ${escapeHtml(reposter.displayName || reposter.handle)}</span>
-          </div>
-        `;
-      }
-
-      return `
-        <article class="p-4 md:p-5 border-b border-neutral-900 hover:bg-neutral-950/40 transition duration-150">
-          ${repostHeader}
-          <div class="flex items-start gap-3">
-            <!-- Author Avatar -->
-            <a href="https://bsky.app/profile/${escapeHtml(author.handle)}" target="_blank" rel="noopener noreferrer" class="shrink-0 group">
-              <img src="${avatarSrc}" alt="${escapeHtml(author.displayName || author.handle)}" class="w-10 h-10 rounded-full object-cover border border-neutral-800 group-hover:ring-2 group-hover:ring-green-500/60 transition" />
-            </a>
-
-            <!-- Content Column -->
-            <div class="flex-1 min-w-0">
-              <!-- Author metadata line -->
-              <div class="flex items-baseline justify-between gap-2">
-                <div class="flex items-baseline gap-1.5 truncate">
-                  <span class="font-bold text-sm text-white truncate">${escapeHtml(author.displayName || author.handle)}</span>
-                  <span class="text-xs text-neutral-400 truncate">@${escapeHtml(author.handle)}</span>
-                </div>
-                <time datetime="${createdAt}" class="text-[11px] text-neutral-500 shrink-0 font-mono">${timeAgo}</time>
-              </div>
-
-              <!-- Post Text -->
-              <div class="mt-1 text-sm text-neutral-100 leading-relaxed break-words whitespace-pre-wrap selection:bg-green-500/30 selection:text-white">
-                ${formattedText}
-              </div>
-
-              <!-- Media Embed -->
-              ${embedHtml}
-
-              <!-- Interactive Actions Bar -->
-              <div class="mt-3 flex items-center justify-between text-xs text-neutral-400 max-w-sm pt-1">
-                <!-- Reply -->
-                <button class="flex items-center gap-1.5 hover:text-green-400 transition group p-1 -ml-1" title="Reply">
-                  <svg class="w-4 h-4 group-hover:scale-110 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                  </svg>
-                  <span>${post.replyCount || 0}</span>
-                </button>
-
-                <!-- Repost -->
-                <button 
-                  class="btn-repost flex items-center gap-1.5 ${isReposted ? 'text-green-500' : 'hover:text-green-400'} transition group p-1"
-                  data-uri="${escapeHtml(post.uri)}"
-                  data-cid="${escapeHtml(post.cid)}"
-                  data-repost-uri="${escapeHtml(repostUri)}"
-                  title="Repost"
-                >
-                  <svg class="w-4 h-4 group-hover:scale-110 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
-                  <span class="repost-count">${post.repostCount || 0}</span>
-                </button>
-
-                <!-- Like -->
-                <button 
-                  class="btn-like flex items-center gap-1.5 ${isLiked ? 'text-green-500' : 'hover:text-green-400'} transition group p-1"
-                  data-uri="${escapeHtml(post.uri)}"
-                  data-cid="${escapeHtml(post.cid)}"
-                  data-like-uri="${escapeHtml(likeUri)}"
-                  title="Like"
-                >
-                  <svg class="w-4 h-4 group-hover:scale-110 transition" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                  </svg>
-                  <span class="like-count">${post.likeCount || 0}</span>
-                </button>
-
-                <!-- Share -->
-                <button 
-                  class="btn-share flex items-center gap-1.5 hover:text-green-400 transition group p-1"
-                  data-author="${escapeHtml(author.handle)}"
-                  data-rkey="${post.uri.split('/').pop()}"
-                  title="Share post"
-                >
-                  <svg class="w-4 h-4 group-hover:scale-110 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </article>
-      `;
-    })
-    .join('');
-
-  container.innerHTML = html;
-
-  container.querySelectorAll('.btn-like').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const uri = btn.dataset.uri;
-      const cid = btn.dataset.cid;
-      const likeUri = btn.dataset.likeUri;
-      toggleLikePost(uri, cid, likeUri, btn);
-    });
-  });
-
-  container.querySelectorAll('.btn-repost').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const uri = btn.dataset.uri;
-      const cid = btn.dataset.cid;
-      const repostUri = btn.dataset.repostUri;
-      toggleRepost(uri, cid, repostUri, btn);
-    });
-  });
-
-  container.querySelectorAll('.btn-share').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      const author = btn.dataset.author;
-      const rkey = btn.dataset.rkey;
-      const postUrl = `https://postrsocial.app/profile/${author}/post/${rkey}`;
-
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: `Post by @${author} on Postr Social`,
-            url: postUrl,
-          });
-        } catch {
-          // ignore share cancel
-        }
-      } else {
-        await navigator.clipboard.writeText(postUrl);
-        showToast('Post link copied to clipboard!', 'info');
-      }
-    });
+  container.innerHTML = '';
+  posts.forEach((item) => {
+    const post = item.post;
+    if (!post) return;
+    const postCard = createPostCardElement(post, item.reason);
+    container.appendChild(postCard);
   });
 }
 
-function renderFeedError(errorMsg) {
-  const container = document.getElementById('feed-container');
-  if (!container) return;
+function createPostCardElement(post, reason) {
+  const card = document.createElement('article');
+  card.className = 'p-4 hover:bg-neutral-950/70 transition border-b border-neutral-900 flex gap-3 text-white';
+  card.dataset.uri = post.uri;
+  card.dataset.cid = post.cid;
 
-  container.innerHTML = `
-    <div class="p-8 text-center text-neutral-400">
-      <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-500/10 text-rose-400 mb-3">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+  const author = post.author || {};
+  const record = post.record || {};
+  const textContent = record.text || '';
+  const createdAt = record.createdAt ? formatTimeAgo(record.createdAt) : '';
+
+  // Viewer interactions
+  const isLiked = Boolean(post.viewer?.like);
+  const likeUri = post.viewer?.like || '';
+  const isReposted = Boolean(post.viewer?.repost);
+  const repostUri = post.viewer?.repost || '';
+  const likeCount = post.likeCount ?? 0;
+  const repostCount = post.repostCount ?? 0;
+  const replyCount = post.replyCount ?? 0;
+
+  // Repost Header note
+  let repostHeaderHtml = '';
+  if (reason && reason.$type === 'app.bsky.feed.defs#reasonRepost') {
+    const reposterName = reason.by?.displayName || reason.by?.handle || 'Someone';
+    repostHeaderHtml = `
+      <div class="flex items-center gap-1.5 text-[11px] text-neutral-500 mb-1.5 ml-12">
+        <svg class="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
         </svg>
+        <span>Reposted by ${escapeHtml(reposterName)}</span>
       </div>
-      <p class="text-sm font-semibold text-rose-300">Feed temporarily unavailable</p>
-      <p class="text-xs text-neutral-400 mt-1 max-w-sm mx-auto">${escapeHtml(errorMsg)}</p>
-      <button id="btn-retry-feed" class="mt-4 px-4 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-green-500 text-xs font-medium text-white transition">
-        Retry Loading
-      </button>
+    `;
+  }
+
+  // Embed rendering (Images, Video, or External)
+  const embedHtml = renderPostEmbed(post.embed);
+
+  card.innerHTML = `
+    <div class="flex-1 min-w-0">
+      ${repostHeaderHtml}
+      <div class="flex gap-3">
+        <!-- Author Avatar -->
+        <a href="#actor-${author.handle}" class="shrink-0" title="${author.handle}">
+          <img
+            src="${author.avatar || '/icon.svg'}"
+            alt="${escapeHtml(author.displayName || author.handle || 'Avatar')}"
+            class="w-10 h-10 rounded-full object-cover border border-neutral-800 hover:border-green-500/50 transition"
+            loading="lazy"
+          />
+        </a>
+
+        <div class="flex-1 min-w-0">
+          <!-- Author Info Line -->
+          <div class="flex items-baseline justify-between gap-2">
+            <div class="flex items-center gap-1.5 truncate">
+              <span class="font-bold text-sm text-white hover:text-green-400 transition cursor-pointer truncate">
+                ${escapeHtml(author.displayName || author.handle || 'Postr User')}
+              </span>
+              <span class="text-xs text-neutral-400 font-mono truncate">
+                @${escapeHtml(author.handle || '')}
+              </span>
+            </div>
+            <time class="text-[11px] text-neutral-400 shrink-0 font-mono">${createdAt}</time>
+          </div>
+
+          <!-- Post Content Text -->
+          <div class="mt-1.5 text-sm text-neutral-100 whitespace-pre-wrap break-words leading-relaxed">
+            ${linkifyText(escapeHtml(textContent))}
+          </div>
+
+          <!-- Embed Preview -->
+          ${embedHtml}
+
+          <!-- Post Interaction Buttons (Reply, Repost, Like, Share) -->
+          <div class="mt-3 pt-2 flex items-center justify-between text-neutral-400 text-xs max-w-md">
+            <!-- Reply -->
+            <button class="btn-post-reply flex items-center gap-1.5 hover:text-green-400 transition" title="Reply">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+              </svg>
+              <span>${replyCount > 0 ? replyCount : ''}</span>
+            </button>
+
+            <!-- Repost -->
+            <button
+              class="btn-post-repost flex items-center gap-1.5 ${isReposted ? 'text-green-400' : 'hover:text-green-400'} transition"
+              data-reposted="${isReposted}"
+              data-repost-uri="${repostUri}"
+              data-uri="${post.uri}"
+              data-cid="${post.cid}"
+              title="Repost"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              <span class="repost-counter">${repostCount > 0 ? repostCount : ''}</span>
+            </button>
+
+            <!-- Like -->
+            <button
+              class="btn-post-like flex items-center gap-1.5 ${isLiked ? 'text-green-400' : 'hover:text-green-400'} transition"
+              data-liked="${isLiked}"
+              data-like-uri="${likeUri}"
+              data-uri="${post.uri}"
+              data-cid="${post.cid}"
+              title="Like"
+            >
+              <svg class="w-4 h-4 ${isLiked ? 'fill-current' : 'fill-none'}" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+              </svg>
+              <span class="like-counter">${likeCount > 0 ? likeCount : ''}</span>
+            </button>
+
+            <!-- Share -->
+            <button
+              class="btn-post-share flex items-center gap-1.5 hover:text-green-400 transition"
+              data-author="${author.handle}"
+              data-rkey="${post.uri.split('/').pop()}"
+              title="Share Link"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
-  const retryBtn = document.getElementById('btn-retry-feed');
-  if (retryBtn) {
-    retryBtn.addEventListener('click', loadTimelineFeed);
-  }
+  return card;
 }
 
-function updateFeedLoadingState(isLoading) {
-  const spinner = document.getElementById('feed-refresh-spinner');
-  const btnRefresh = document.getElementById('btn-refresh-feed');
-  if (spinner) {
-    if (isLoading) spinner.classList.remove('hidden');
-    else spinner.classList.add('hidden');
+function renderPostEmbed(embed) {
+  if (!embed) return '';
+
+  // 1. Images Embed (app.bsky.embed.images#view)
+  if (embed.$type === 'app.bsky.embed.images#view' && Array.isArray(embed.images)) {
+    const gridCols = embed.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2';
+    const imgsHtml = embed.images
+      .map((img) => `
+        <div class="relative overflow-hidden rounded-xl bg-neutral-900 border border-neutral-800">
+          <img
+            src="${img.thumb || img.fullsize}"
+            alt="${escapeHtml(img.alt || 'Post image')}"
+            class="w-full h-48 object-cover hover:scale-102 transition duration-200 cursor-pointer"
+            loading="lazy"
+            onclick="window.open('${img.fullsize || img.thumb}', '_blank')"
+          />
+        </div>
+      `)
+      .join('');
+
+    return `<div class="mt-2.5 grid ${gridCols} gap-2 rounded-xl overflow-hidden">${imgsHtml}</div>`;
   }
-  if (btnRefresh) {
-    btnRefresh.disabled = isLoading;
+
+  // 2. Video Embed (app.bsky.embed.video#view or external)
+  if (embed.$type === 'app.bsky.embed.video#view') {
+    const playlistUrl = embed.playlist || '';
+    const thumbnail = embed.thumbnail || '';
+    return `
+      <div class="mt-2.5 rounded-xl overflow-hidden border border-neutral-800 bg-black">
+        <video
+          controls
+          poster="${thumbnail}"
+          class="w-full max-h-72 object-contain bg-black"
+          preload="metadata"
+        >
+          <source src="${playlistUrl}" type="application/x-mpegURL">
+          Your browser does not support video playback.
+        </video>
+      </div>
+    `;
   }
+
+  // 3. External link card (app.bsky.embed.external#view)
+  if (embed.$type === 'app.bsky.embed.external#view' && embed.external) {
+    const ext = embed.external;
+    return `
+      <a
+        href="${ext.uri}"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="mt-2.5 block rounded-xl overflow-hidden border border-neutral-800 bg-neutral-900/60 hover:bg-neutral-900 hover:border-neutral-700 transition"
+      >
+        ${ext.thumb ? `<img src="${ext.thumb}" class="w-full h-36 object-cover" loading="lazy" />` : ''}
+        <div class="p-3">
+          <p class="text-xs font-bold text-white line-clamp-1">${escapeHtml(ext.title || '')}</p>
+          <p class="text-[11px] text-neutral-400 line-clamp-2 mt-0.5">${escapeHtml(ext.description || '')}</p>
+          <span class="text-[10px] font-mono text-green-400 mt-1 block truncate">${ext.uri}</span>
+        </div>
+      </a>
+    `;
+  }
+
+  // 4. Record with media
+  if (embed.$type === 'app.bsky.embed.recordWithMedia#view' && embed.media) {
+    return renderPostEmbed(embed.media);
+  }
+
+  return '';
 }
 
 // ==========================================
-// In-App PWA Installation Engine
+// Post Composer: Text, Photo & Video uploads
 // ==========================================
 
-function initPWAInstallation() {
-  const installButtons = document.querySelectorAll('.pwa-install-trigger');
-  const iosGuideModal = document.getElementById('pwa-ios-modal');
-  const isIOS = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
-  const isStandalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
+export async function publishPost({ text, images = [], video = null }) {
+  if (!state.agent) throw new Error('Not logged in');
+  if (state.isPublishingPost) return;
 
-  if (isStandalone) {
-    installButtons.forEach((btn) => btn.classList.add('hidden'));
+  const trimmedText = text.trim();
+  if (!trimmedText && images.length === 0 && !video) {
+    throw new Error('Please enter some text or attach an image or video.');
+  }
+
+  state.isPublishingPost = true;
+  setPublishButtonLoading(true);
+
+  try {
+    let embed = undefined;
+
+    // 1. Upload photo attachments if any
+    if (images && images.length > 0) {
+      showToast(`Uploading ${images.length} photo(s)...`, 'info');
+      const uploadedBlobs = [];
+      for (const file of images) {
+        const res = await state.agent.uploadBlob(file, {
+          encoding: file.type || 'image/jpeg',
+        });
+        uploadedBlobs.push({
+          image: res.data.blob,
+          alt: 'Postr photo attachment',
+        });
+      }
+
+      embed = {
+        $type: 'app.bsky.embed.images',
+        images: uploadedBlobs,
+      };
+    }
+
+    // 2. Upload video if attached
+    if (video) {
+      showToast('Uploading video file...', 'info');
+      const videoRes = await state.agent.uploadBlob(video, {
+        encoding: video.type || 'video/mp4',
+      });
+
+      embed = {
+        $type: 'app.bsky.embed.video',
+        video: videoRes.data.blob,
+      };
+    }
+
+    // 3. Post to timeline
+    await state.agent.post({
+      text: trimmedText,
+      embed,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Reset fields
+    clearComposerForms();
+    closeModal('composer-modal');
+    showToast('Post published successfully!', 'success');
+
+    // Refresh feed
+    await loadFeed('timeline');
+  } catch (error) {
+    console.error('Error publishing post:', error);
+    showToast('Failed to post: ' + formatErrorMessage(error), 'error');
+  } finally {
+    state.isPublishingPost = false;
+    setPublishButtonLoading(false);
+  }
+}
+
+function clearComposerForms() {
+  const inlineText = document.getElementById('composer-textarea');
+  if (inlineText) inlineText.value = '';
+
+  const modalText = document.getElementById('modal-composer-textarea');
+  if (modalText) modalText.value = '';
+
+  state.inlineImages = [];
+  state.inlineVideo = null;
+  state.modalImages = [];
+  state.modalVideo = null;
+
+  renderComposerAttachments('inline');
+  renderComposerAttachments('modal');
+  updateCharCounter();
+}
+
+function renderComposerAttachments(context = 'inline') {
+  const isInline = context === 'inline';
+  const previewBox = document.getElementById(isInline ? 'inline-attachments-preview' : 'modal-attachments-preview');
+  const imagesGrid = document.getElementById(isInline ? 'inline-images-grid' : 'modal-images-grid');
+  const videoBox = document.getElementById(isInline ? 'inline-video-preview-box' : 'modal-video-preview-box');
+  const videoPlayer = document.getElementById(isInline ? 'inline-video-player' : 'modal-video-player');
+
+  const images = isInline ? state.inlineImages : state.modalImages;
+  const video = isInline ? state.inlineVideo : state.modalVideo;
+
+  if (!previewBox) return;
+
+  if (images.length === 0 && !video) {
+    previewBox.classList.add('hidden');
     return;
   }
 
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    state.deferredInstallPrompt = e;
-    installButtons.forEach((btn) => btn.classList.remove('hidden'));
-  });
+  previewBox.classList.remove('hidden');
 
-  window.addEventListener('appinstalled', () => {
-    state.deferredInstallPrompt = null;
-    installButtons.forEach((btn) => btn.classList.add('hidden'));
-    showToast('Postr Social installed successfully!', 'success');
-  });
-
-  installButtons.forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (state.deferredInstallPrompt) {
-        state.deferredInstallPrompt.prompt();
-        const choice = await state.deferredInstallPrompt.userChoice;
-        if (choice.outcome === 'accepted') {
-          installButtons.forEach((b) => b.classList.add('hidden'));
-        }
-        state.deferredInstallPrompt = null;
-      } else if (isIOS) {
-        if (iosGuideModal) iosGuideModal.classList.remove('hidden');
-      } else {
-        showToast('Use browser menu [Add to Home screen] to install Postr Social.', 'info');
-      }
+  // Render images
+  if (imagesGrid) {
+    imagesGrid.innerHTML = '';
+    images.forEach((file, index) => {
+      const url = URL.createObjectURL(file);
+      const thumb = document.createElement('div');
+      thumb.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-neutral-700 bg-neutral-900 group';
+      thumb.innerHTML = `
+        <img src="${url}" class="w-full h-full object-cover" />
+        <button type="button" class="btn-remove-img absolute top-1 right-1 w-5 h-5 rounded-full bg-black/80 text-white hover:bg-rose-600 flex items-center justify-center text-[10px] transition" data-context="${context}" data-index="${index}">
+          ✕
+        </button>
+      `;
+      imagesGrid.appendChild(thumb);
     });
-  });
+  }
 
-  const iosCloseBtn = document.getElementById('pwa-ios-close');
-  if (iosCloseBtn && iosGuideModal) {
-    iosCloseBtn.addEventListener('click', () => {
-      iosGuideModal.classList.add('hidden');
-    });
+  // Render video
+  if (videoBox && videoPlayer) {
+    if (video) {
+      videoBox.classList.remove('hidden');
+      videoPlayer.src = URL.createObjectURL(video);
+    } else {
+      videoBox.classList.add('hidden');
+      videoPlayer.src = '';
+    }
   }
 }
 
 // ==========================================
-// Network Connectivity Monitoring
+// Account Discovery & Following (Search)
 // ==========================================
 
-function initNetworkMonitor() {
-  const offlineBanner = document.getElementById('offline-indicator');
+export async function searchAccounts(query) {
+  if (!state.agent) return;
+  const container = document.getElementById('search-results-container');
+  if (!container) return;
 
-  const updateNetworkStatus = () => {
-    state.isOnline = navigator.onLine;
-    if (offlineBanner) {
-      if (state.isOnline) {
-        offlineBanner.classList.add('hidden');
-      } else {
-        offlineBanner.classList.remove('hidden');
-      }
+  const trimmed = query.trim();
+  if (!trimmed) {
+    container.innerHTML = `
+      <div class="py-12 text-center text-neutral-500 text-xs">
+        Type in the box above to find accounts on postersocial.app and the AT Protocol network.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="p-8 text-center text-neutral-500 text-xs flex flex-col items-center justify-center gap-2">
+      <svg class="w-5 h-5 animate-spin text-green-500" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+      </svg>
+      <span>Searching accounts for "${escapeHtml(trimmed)}"...</span>
+    </div>
+  `;
+
+  try {
+    const res = await state.agent.searchActors({ term: trimmed, limit: 25 });
+    const actors = res.data.actors || [];
+
+    if (actors.length === 0) {
+      container.innerHTML = `
+        <div class="py-12 text-center text-neutral-400 text-xs">
+          No accounts found matching "${escapeHtml(trimmed)}".
+        </div>
+      `;
+      return;
     }
-  };
 
-  window.addEventListener('online', () => {
-    updateNetworkStatus();
-    showToast('Back online — sync restored', 'success');
-    if (state.agent) loadTimelineFeed();
-  });
+    container.innerHTML = '';
+    actors.forEach((actor) => {
+      const card = createActorCardElement(actor);
+      container.appendChild(card);
+    });
+  } catch (error) {
+    console.error('Error searching actors:', error);
+    container.innerHTML = `
+      <div class="py-8 text-center text-rose-400 text-xs">
+        Error searching accounts: ${formatErrorMessage(error)}
+      </div>
+    `;
+  }
+}
 
-  window.addEventListener('offline', () => {
-    updateNetworkStatus();
-    showToast('Offline Mode: updates paused', 'warning');
-  });
+function createActorCardElement(actor) {
+  const el = document.createElement('div');
+  el.className = 'p-4 flex items-center justify-between gap-3 hover:bg-neutral-950/60 transition border-b border-neutral-900 text-white';
 
-  updateNetworkStatus();
+  const isFollowing = Boolean(actor.viewer?.following) || state.followingMap.get(actor.did);
+  const followUri = actor.viewer?.following || state.followingMap.get(actor.did) || '';
+
+  el.innerHTML = `
+    <div class="flex items-center gap-3 min-w-0 flex-1">
+      <img
+        src="${actor.avatar || '/icon.svg'}"
+        alt=""
+        class="w-11 h-11 rounded-full object-cover border border-neutral-800 shrink-0"
+        loading="lazy"
+      />
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-1.5 truncate">
+          <span class="font-bold text-sm text-white truncate">${escapeHtml(actor.displayName || actor.handle)}</span>
+        </div>
+        <p class="text-xs text-neutral-400 font-mono truncate">@${escapeHtml(actor.handle)}</p>
+        ${actor.description ? `<p class="text-[11px] text-neutral-300 line-clamp-1 mt-0.5">${escapeHtml(actor.description)}</p>` : ''}
+      </div>
+    </div>
+
+    <!-- Follow / Unfollow Button -->
+    <button
+      class="btn-follow-toggle px-3.5 py-1.5 rounded-xl text-xs font-bold transition shrink-0 ${
+        isFollowing
+          ? 'bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-700 hover:border-rose-500/50 hover:text-rose-400'
+          : 'bg-green-500 hover:bg-green-400 text-black shadow-md shadow-green-950/40'
+      }"
+      data-did="${actor.did}"
+      data-following="${Boolean(isFollowing)}"
+      data-follow-uri="${followUri}"
+    >
+      ${isFollowing ? 'Following' : 'Follow'}
+    </button>
+  `;
+
+  return el;
+}
+
+export async function toggleFollowActor(button) {
+  if (!state.agent) return;
+  const did = button.dataset.did;
+  const isFollowing = button.dataset.following === 'true';
+  const followUri = button.dataset.followUri;
+
+  button.disabled = true;
+
+  try {
+    if (isFollowing && followUri) {
+      await state.agent.deleteFollow(followUri);
+      state.followingMap.delete(did);
+      button.dataset.following = 'false';
+      button.dataset.followUri = '';
+      button.textContent = 'Follow';
+      button.className = 'btn-follow-toggle px-3.5 py-1.5 rounded-xl text-xs font-bold transition shrink-0 bg-green-500 hover:bg-green-400 text-black shadow-md shadow-green-950/40';
+      showToast('Unfollowed account', 'info');
+    } else {
+      const res = await state.agent.follow(did);
+      const newFollowUri = res.uri;
+      state.followingMap.set(did, newFollowUri);
+      button.dataset.following = 'true';
+      button.dataset.followUri = newFollowUri;
+      button.textContent = 'Following';
+      button.className = 'btn-follow-toggle px-3.5 py-1.5 rounded-xl text-xs font-bold transition shrink-0 bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-700 hover:border-rose-500/50 hover:text-rose-400';
+      showToast('Following account!', 'success');
+    }
+  } catch (error) {
+    console.error('Error toggling follow:', error);
+    showToast('Failed to update follow status: ' + formatErrorMessage(error), 'error');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ==========================================
-// Helper Utilities & Modal Controls
+// Interactions: Like & Repost
 // ==========================================
 
-function openComposerModal() {
-  const modal = document.getElementById('composer-modal');
+export async function toggleLikePost(button) {
+  if (!state.agent) return;
+  const uri = button.dataset.uri;
+  const cid = button.dataset.cid;
+  const isLiked = button.dataset.liked === 'true';
+  const likeUri = button.dataset.likeUri;
+  const counterEl = button.querySelector('.like-counter');
+  let currentCount = parseInt(counterEl?.textContent || '0', 10);
+
+  // Optimistic UI
+  button.dataset.liked = (!isLiked).toString();
+  const svg = button.querySelector('svg');
+
+  if (isLiked) {
+    svg?.classList.remove('fill-current');
+    svg?.classList.add('fill-none');
+    button.classList.remove('text-green-400');
+    if (counterEl) counterEl.textContent = Math.max(0, currentCount - 1) || '';
+  } else {
+    svg?.classList.remove('fill-none');
+    svg?.classList.add('fill-current');
+    button.classList.add('text-green-400');
+    if (counterEl) counterEl.textContent = (currentCount + 1).toString();
+  }
+
+  try {
+    if (isLiked && likeUri) {
+      await state.agent.deleteLike(likeUri);
+      button.dataset.likeUri = '';
+    } else {
+      const res = await state.agent.like(uri, cid);
+      button.dataset.likeUri = res.uri;
+    }
+  } catch (err) {
+    console.error('Error toggling like:', err);
+    // Revert optimistic
+    button.dataset.liked = isLiked.toString();
+    if (isLiked) {
+      svg?.classList.add('fill-current');
+      button.classList.add('text-green-400');
+      if (counterEl) counterEl.textContent = currentCount || '';
+    } else {
+      svg?.classList.remove('fill-current');
+      button.classList.remove('text-green-400');
+      if (counterEl) counterEl.textContent = currentCount || '';
+    }
+    showToast('Like action failed: ' + formatErrorMessage(err), 'error');
+  }
+}
+
+export async function toggleRepostPost(button) {
+  if (!state.agent) return;
+  const uri = button.dataset.uri;
+  const cid = button.dataset.cid;
+  const isReposted = button.dataset.reposted === 'true';
+  const repostUri = button.dataset.repostUri;
+  const counterEl = button.querySelector('.repost-counter');
+  let currentCount = parseInt(counterEl?.textContent || '0', 10);
+
+  // Optimistic UI
+  button.dataset.reposted = (!isReposted).toString();
+  if (isReposted) {
+    button.classList.remove('text-green-400');
+    if (counterEl) counterEl.textContent = Math.max(0, currentCount - 1) || '';
+  } else {
+    button.classList.add('text-green-400');
+    if (counterEl) counterEl.textContent = (currentCount + 1).toString();
+  }
+
+  try {
+    if (isReposted && repostUri) {
+      await state.agent.deleteRepost(repostUri);
+      button.dataset.repostUri = '';
+    } else {
+      const res = await state.agent.repost(uri, cid);
+      button.dataset.repostUri = res.uri;
+      showToast('Reposted to your followers', 'success');
+    }
+  } catch (err) {
+    console.error('Error toggling repost:', err);
+    button.dataset.reposted = isReposted.toString();
+    if (isReposted) {
+      button.classList.add('text-green-400');
+      if (counterEl) counterEl.textContent = currentCount || '';
+    } else {
+      button.classList.remove('text-green-400');
+      if (counterEl) counterEl.textContent = currentCount || '';
+    }
+    showToast('Repost action failed: ' + formatErrorMessage(err), 'error');
+  }
+}
+
+// ==========================================
+// App Navigation & View Switching
+// ==========================================
+
+export function switchAppView(viewName) {
+  state.activeView = viewName;
+
+  const subviewFeed = document.getElementById('subview-feed');
+  const subviewSearch = document.getElementById('subview-search');
+  const subviewProfile = document.getElementById('subview-profile');
+
+  // Hide all subviews
+  subviewFeed?.classList.add('hidden');
+  subviewSearch?.classList.add('hidden');
+  subviewProfile?.classList.add('hidden');
+
+  // Show active subview
+  if (viewName === 'feed') {
+    subviewFeed?.classList.remove('hidden');
+  } else if (viewName === 'search') {
+    subviewSearch?.classList.remove('hidden');
+    document.getElementById('search-input')?.focus();
+  } else if (viewName === 'profile') {
+    subviewProfile?.classList.remove('hidden');
+    loadUserProfile();
+    loadFeed('myposts');
+  }
+
+  // Update mobile bottom nav active classes
+  document.querySelectorAll('.mobile-nav-btn').forEach((btn) => {
+    btn.classList.remove('text-green-500');
+    btn.classList.add('text-neutral-400');
+  });
+
+  const activeNavBtn = document.getElementById(`nav-btn-${viewName}`);
+  if (activeNavBtn) {
+    activeNavBtn.classList.add('text-green-500');
+    activeNavBtn.classList.remove('text-neutral-400');
+  }
+}
+
+// ==========================================
+// UI Helpers, Modals & Toast
+// ==========================================
+
+function openModal(modalId) {
+  const modal = document.getElementById(modalId);
   if (modal) {
     modal.classList.remove('hidden');
-    const textarea = document.getElementById('modal-composer-textarea');
-    if (textarea) {
-      textarea.focus();
-    }
+    document.body.classList.add('overflow-hidden');
   }
 }
 
-function closeComposerModal() {
-  const modal = document.getElementById('composer-modal');
+function closeModal(modalId) {
+  const modal = document.getElementById(modalId);
   if (modal) {
     modal.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
   }
 }
 
-function setAuthLoading(isLoading, message = '') {
-  state.isSubmittingAuth = isLoading;
-  const loginSubmitBtn = document.getElementById('btn-login-submit');
-  const signupSubmitBtn = document.getElementById('btn-signup-submit');
-  const loadingStatusText = document.getElementById('auth-status-text');
+export function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
 
-  [loginSubmitBtn, signupSubmitBtn].forEach((btn) => {
-    if (btn) {
-      btn.disabled = isLoading;
-      const spinner = btn.querySelector('.btn-spinner');
-      if (spinner) {
-        if (isLoading) spinner.classList.remove('hidden');
-        else spinner.classList.add('hidden');
-      }
-    }
+  const toast = document.createElement('div');
+  let borderColor = 'border-neutral-800';
+  let textColor = 'text-white';
+  let iconSvg = '';
+
+  if (type === 'success') {
+    borderColor = 'border-green-500/80';
+    textColor = 'text-green-400';
+    iconSvg = '<svg class="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+  } else if (type === 'error') {
+    borderColor = 'border-rose-600/80';
+    textColor = 'text-rose-400';
+    iconSvg = '<svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+  } else {
+    iconSvg = '<svg class="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+  }
+
+  toast.className = `p-3 rounded-xl bg-neutral-950 border ${borderColor} text-xs ${textColor} shadow-2xl flex items-center gap-2 transform translate-y-2 opacity-0 transition duration-200 pointer-events-auto max-w-xs`;
+  toast.innerHTML = `${iconSvg}<span class="flex-1">${escapeHtml(message)}</span>`;
+
+  container.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.classList.remove('translate-y-2', 'opacity-0');
   });
 
-  if (loadingStatusText) {
-    if (isLoading && message) {
-      loadingStatusText.textContent = message;
-      loadingStatusText.classList.remove('hidden');
-    } else {
-      loadingStatusText.classList.add('hidden');
-    }
-  }
+  setTimeout(() => {
+    toast.classList.add('translate-y-2', 'opacity-0');
+    setTimeout(() => toast.remove(), 250);
+  }, 3500);
 }
 
-function setPublishLoading(isLoading) {
-  state.isPublishingPost = isLoading;
-  const publishButtons = document.querySelectorAll('.btn-publish-trigger');
-  publishButtons.forEach((btn) => {
-    btn.disabled = isLoading;
-    const spinner = btn.querySelector('.btn-spinner');
-    if (spinner) {
-      if (isLoading) spinner.classList.remove('hidden');
-      else spinner.classList.add('hidden');
-    }
-  });
+function setAuthLoading(loading, message = '') {
+  const statusBox = document.getElementById('auth-status-text');
+  const statusLabel = document.getElementById('auth-status-label');
+  const loginBtn = document.getElementById('btn-login-submit');
+  const signupBtn = document.getElementById('btn-signup-submit');
+
+  if (loading) {
+    if (statusBox) statusBox.classList.remove('hidden');
+    if (statusLabel) statusLabel.textContent = message;
+    loginBtn?.setAttribute('disabled', 'true');
+    signupBtn?.setAttribute('disabled', 'true');
+    loginBtn?.querySelectorAll('.btn-spinner').forEach((s) => s.classList.remove('hidden'));
+    signupBtn?.querySelectorAll('.btn-spinner').forEach((s) => s.classList.remove('hidden'));
+  } else {
+    if (statusBox) statusBox.classList.add('hidden');
+    loginBtn?.removeAttribute('disabled');
+    signupBtn?.removeAttribute('disabled');
+    loginBtn?.querySelectorAll('.btn-spinner').forEach((s) => s.classList.add('hidden'));
+    signupBtn?.querySelectorAll('.btn-spinner').forEach((s) => s.classList.add('hidden'));
+  }
 }
 
 function showAuthError(msg) {
@@ -943,80 +1201,83 @@ function clearAuthError() {
   if (errorBox) errorBox.classList.add('hidden');
 }
 
-function hideAuthModal() {
-  const authContainer = document.getElementById('auth-view');
-  if (authContainer) authContainer.classList.add('hidden');
+function showAuthSuccessNotice(msg) {
+  const statusBox = document.getElementById('auth-status-text');
+  const statusLabel = document.getElementById('auth-status-label');
+  if (statusBox && statusLabel) {
+    statusLabel.textContent = msg;
+    statusBox.classList.remove('hidden');
+  }
+}
+
+function setPublishButtonLoading(loading) {
+  const buttons = document.querySelectorAll('.btn-publish-trigger');
+  buttons.forEach((btn) => {
+    if (loading) {
+      btn.setAttribute('disabled', 'true');
+      btn.querySelector('.btn-spinner')?.classList.remove('hidden');
+    } else {
+      btn.removeAttribute('disabled');
+      btn.querySelector('.btn-spinner')?.classList.add('hidden');
+    }
+  });
+}
+
+function updateCharCounter() {
+  const inlineVal = document.getElementById('composer-textarea')?.value || '';
+  const modalVal = document.getElementById('modal-composer-textarea')?.value || '';
+
+  const inlineCount = 300 - inlineVal.length;
+  const modalCount = 300 - modalVal.length;
+
+  const inlineCounterEl = document.getElementById('composer-char-count');
+  if (inlineCounterEl) {
+    inlineCounterEl.textContent = inlineCount;
+    inlineCounterEl.className = inlineCount < 0 ? 'text-xs font-mono text-rose-500 font-bold' : 'text-xs font-mono text-neutral-500';
+  }
+
+  const modalCounterEl = document.getElementById('modal-char-count');
+  if (modalCounterEl) {
+    modalCounterEl.textContent = modalCount;
+    modalCounterEl.className = modalCount < 0 ? 'text-xs font-mono text-rose-500 font-bold' : 'text-xs font-mono text-neutral-500';
+  }
+}
+
+function updatePdsBadgeUI(endpoint) {
+  const badge = document.getElementById('active-pds-badge');
+  if (badge) {
+    try {
+      const url = new URL(endpoint);
+      badge.textContent = url.hostname;
+    } catch {
+      badge.textContent = endpoint;
+    }
+  }
 }
 
 function showSplashMessage(msg) {
   const splash = document.getElementById('splash-screen');
   const text = document.getElementById('splash-text');
-  if (splash) {
-    splash.classList.remove('hidden');
-    if (text) text.textContent = msg;
-  }
+  if (splash) splash.classList.remove('hidden');
+  if (text) text.textContent = msg;
 }
 
-function hideSplashMessage() {
+function hideSplashScreen() {
   const splash = document.getElementById('splash-screen');
   if (splash) splash.classList.add('hidden');
 }
 
-export function showToast(message, type = 'info') {
-  const toastContainer = document.getElementById('toast-container');
-  if (!toastContainer) return;
-
-  const toast = document.createElement('div');
-  const bgColors = {
-    info: 'bg-neutral-900 border-neutral-700 text-neutral-100',
-    success: 'bg-neutral-950 border-green-500/80 text-green-300 shadow-green-950/40',
-    warning: 'bg-neutral-950 border-amber-600/80 text-amber-300',
-    error: 'bg-neutral-950 border-rose-600/80 text-rose-300',
-  };
-
-  toast.className = `flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl transition-all duration-300 transform translate-y-2 opacity-0 ${
-    bgColors[type] || bgColors.info
-  }`;
-  toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
-
-  toastContainer.appendChild(toast);
-  requestAnimationFrame(() => {
-    toast.classList.remove('translate-y-2', 'opacity-0');
-  });
-
-  setTimeout(() => {
-    toast.classList.add('translate-y-2', 'opacity-0');
-    setTimeout(() => toast.remove(), 300);
-  }, 3500);
-}
-
-function updateCharCounter(length, counterElId = 'composer-char-count') {
-  const countEl = document.getElementById(counterElId);
-  if (!countEl) return;
-  const remaining = 300 - length;
-  countEl.textContent = `${remaining}`;
-
-  if (remaining < 0) {
-    countEl.className = 'text-xs font-mono font-bold text-rose-500';
-  } else if (remaining < 20) {
-    countEl.className = 'text-xs font-mono font-bold text-amber-400';
-  } else {
-    countEl.className = 'text-xs font-mono text-green-400/80';
-  }
-}
-
 function formatErrorMessage(error) {
   if (!error) return 'An unexpected network error occurred.';
-  const msg = error.message || String(error);
-
-  if (msg.includes('Invalid identifier or password')) {
+  const msg = error.message || error.toString();
+  if (msg.includes('Authentication Required') || msg.includes('Invalid identifier or password')) {
     return 'Invalid handle/email or password. Please verify your credentials.';
   }
   if (msg.includes('Handle not found') || msg.includes('Unable to resolve handle')) {
-    return 'Could not locate that handle on postrsocial.app or the AT Protocol network.';
+    return 'Could not locate that handle on postersocial.app or the AT Protocol network.';
   }
   if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-    return 'Network connection issue or PDS is unreachable. Verify your connection to postrsocial.app.';
+    return 'Network connection issue or PDS is unreachable. Verify your connection to postersocial.app.';
   }
   if (msg.includes('Token has expired') || msg.includes('ExpiredToken')) {
     return 'Session expired. Please sign in again.';
@@ -1024,9 +1285,22 @@ function formatErrorMessage(error) {
   return msg;
 }
 
+function formatTimeAgo(isoString) {
+  const now = Date.now();
+  const past = new Date(isoString).getTime();
+  const diffSec = Math.floor((now - past) / 1000);
+
+  if (diffSec < 60) return `${Math.max(1, diffSec)}s`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d`;
+}
+
 function escapeHtml(str) {
-  if (!str) return '';
-  return str
+  return String(str || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -1034,85 +1308,48 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-function linkify(text) {
-  if (!text) return '';
+function linkifyText(escapedText) {
+  // URLs
   const urlRegex = /(https?:\/\/[^\s]+)/g;
-  let res = text.replace(
-    urlRegex,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-green-400 hover:underline font-medium">$1</a>'
-  );
+  let linked = escapedText.replace(urlRegex, (url) => {
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-green-400 hover:underline">${url}</a>`;
+  });
 
-  const mentionRegex = /(^|[\s])@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
-  res = res.replace(
-    mentionRegex,
-    '$1<a href="https://bsky.app/profile/$2" target="_blank" rel="noopener noreferrer" class="text-green-400 font-semibold hover:underline">@$2</a>'
-  );
+  // Mentions
+  const mentionRegex = /@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+  linked = linked.replace(mentionRegex, (match) => {
+    return `<span class="text-green-400 font-mono font-medium">${match}</span>`;
+  });
 
-  return res;
-}
-
-function formatTimeAgo(isoString) {
-  if (!isoString) return '';
-  try {
-    const past = new Date(isoString).getTime();
-    const diff = Math.floor((Date.now() - past) / 1000);
-
-    if (diff < 60) return `${Math.max(1, diff)}s`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    return `${Math.floor(diff / 86400)}d`;
-  } catch {
-    return '';
-  }
-}
-
-function formatNumber(num) {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
-  return String(num);
-}
-
-function createAvatarPlaceholder(name) {
-  const initial = (name.replace(/^@/, '')[0] || 'P').toUpperCase();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
-    <rect width="80" height="80" rx="40" fill="#000000" stroke="#22c55e" stroke-width="2"/>
-    <text x="50%" y="54%" font-family="system-ui, -apple-system, sans-serif" font-size="34" font-weight="bold" fill="#22c55e" text-anchor="middle" dominant-baseline="middle">${initial}</text>
-  </svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  return linked;
 }
 
 // ==========================================
-// Event Listeners & Application Bootstrapping
+// Event Listeners & Initialization
 // ==========================================
 
-function setupEventListeners() {
-  // 1. Auth Mode Switch (Log In vs Sign Up)
-  const tabLogin = document.getElementById('tab-btn-login');
-  const tabSignup = document.getElementById('tab-btn-signup');
+export function initEventListeners() {
   const formLogin = document.getElementById('form-login');
   const formSignup = document.getElementById('form-signup');
+  const tabBtnLogin = document.getElementById('tab-btn-login');
+  const tabBtnSignup = document.getElementById('tab-btn-signup');
 
-  if (tabLogin && tabSignup && formLogin && formSignup) {
-    tabLogin.addEventListener('click', () => {
-      tabLogin.classList.add('bg-neutral-900', 'text-white', 'shadow', 'border', 'border-neutral-800');
-      tabLogin.classList.remove('text-neutral-400');
-      tabSignup.classList.remove('bg-neutral-900', 'text-white', 'shadow', 'border', 'border-neutral-800');
-      tabSignup.classList.add('text-neutral-400');
-      formLogin.classList.remove('hidden');
-      formSignup.classList.add('hidden');
-      clearAuthError();
-    });
+  // 1. Auth Mode Switcher (Login vs Signup)
+  tabBtnLogin?.addEventListener('click', () => {
+    clearAuthError();
+    formLogin?.classList.remove('hidden');
+    formSignup?.classList.add('hidden');
+    tabBtnLogin.className = 'py-2 rounded-lg bg-neutral-900 text-white border border-neutral-800 shadow transition';
+    if (tabBtnSignup) tabBtnSignup.className = 'py-2 rounded-lg text-neutral-400 hover:text-white transition';
+  });
 
-    tabSignup.addEventListener('click', () => {
-      tabSignup.classList.add('bg-neutral-900', 'text-white', 'shadow', 'border', 'border-neutral-800');
-      tabSignup.classList.remove('text-neutral-400');
-      tabLogin.classList.remove('bg-neutral-900', 'text-white', 'shadow', 'border', 'border-neutral-800');
-      tabLogin.classList.add('text-neutral-400');
-      formSignup.classList.remove('hidden');
-      formLogin.classList.add('hidden');
-      clearAuthError();
-    });
-  }
+  tabBtnSignup?.addEventListener('click', () => {
+    clearAuthError();
+    formSignup?.classList.remove('hidden');
+    formLogin?.classList.add('hidden');
+    tabBtnSignup.className = 'py-2 rounded-lg bg-neutral-900 text-white border border-neutral-800 shadow transition';
+    if (tabBtnLogin) tabBtnLogin.className = 'py-2 rounded-lg text-neutral-400 hover:text-white transition';
+  });
 
   // 2. Quick Suffix Helper Chips
   document.querySelectorAll('.btn-suffix-chip').forEach((chip) => {
@@ -1121,14 +1358,14 @@ function setupEventListeners() {
       const suffix = chip.dataset.suffix;
       if (targetInput) {
         let val = targetInput.value.trim();
-        val = val.replace(/\.(postrsocial\.app|bsky\.social)$/, '');
+        val = val.replace(/\.(postersocial\.app|bsky\.social)$/, '');
         targetInput.value = val ? `${val}${suffix}` : '';
         targetInput.focus();
       }
     });
   });
 
-  // 3. Login Form Submission (hardcoded target: https://postrsocial.app)
+  // 3. Login Form Submission (hardcoded target: https://postersocial.app)
   if (formLogin) {
     formLogin.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1149,132 +1386,374 @@ function setupEventListeners() {
     });
   }
 
-  // 4. Signup Form Submission targeting https://postrsocial.app (invite code disabled)
+  // 4. Signup Form Submission targeting https://postersocial.app (invite code disabled)
   if (formSignup) {
     formSignup.addEventListener('submit', async (e) => {
       e.preventDefault();
       clearAuthError();
       const email = document.getElementById('signup-email')?.value || '';
-      let handle = document.getElementById('signup-handle')?.value || '';
+      const handle = document.getElementById('signup-handle')?.value || '';
       const password = document.getElementById('signup-password')?.value || '';
 
-      if (!email.trim()) {
-        showAuthError('Email address is required.');
+      if (!email.trim() || !email.includes('@')) {
+        showAuthError('Please enter a valid email address.');
         return;
       }
       if (!handle.trim()) {
-        showAuthError('Desired handle is required.');
+        showAuthError('Please enter your desired handle.');
         return;
       }
       if (!password || password.length < 8) {
-        showAuthError('Password must be at least 8 characters long.');
+        showAuthError('Password must be at least 8 characters in length.');
         return;
       }
 
-      await signupUser({
-        email,
-        handle,
-        password,
-      });
+      await signupUser(email, handle, password);
     });
   }
 
-  // 5. Logout Buttons
-  document.querySelectorAll('.btn-logout-trigger').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (confirm('Sign out of Postr Social?')) {
-        logoutUser();
-      }
-    });
-  });
+  // 5. Navigation: Top bar & Mobile Bottom Bar
+  document.getElementById('nav-btn-home-logo')?.addEventListener('click', () => switchAppView('feed'));
+  document.getElementById('top-btn-search')?.addEventListener('click', () => switchAppView('search'));
+  document.getElementById('top-btn-profile')?.addEventListener('click', () => switchAppView('profile'));
 
-  // 6. Refresh Feed Button
-  const btnRefreshFeed = document.getElementById('btn-refresh-feed');
-  if (btnRefreshFeed) {
-    btnRefreshFeed.addEventListener('click', loadTimelineFeed);
-  }
+  document.getElementById('nav-btn-feed')?.addEventListener('click', () => switchAppView('feed'));
+  document.getElementById('nav-btn-search')?.addEventListener('click', () => switchAppView('search'));
+  document.getElementById('nav-btn-profile')?.addEventListener('click', () => switchAppView('profile'));
 
-  // 7. Feed Tab Switching (Timeline vs My Posts)
+  // 6. Feed Tabs (Timeline vs My Posts)
   const feedTabTimeline = document.getElementById('feed-tab-timeline');
   const feedTabMyPosts = document.getElementById('feed-tab-myposts');
 
-  if (feedTabTimeline && feedTabMyPosts) {
-    feedTabTimeline.addEventListener('click', () => {
-      if (state.activeTab === 'timeline') return;
-      state.activeTab = 'timeline';
-      feedTabTimeline.classList.add('border-green-500', 'text-white');
-      feedTabTimeline.classList.remove('border-transparent', 'text-neutral-400');
-      feedTabMyPosts.classList.remove('border-green-500', 'text-white');
-      feedTabMyPosts.classList.add('border-transparent', 'text-neutral-400');
-      loadTimelineFeed();
-    });
-
-    feedTabMyPosts.addEventListener('click', () => {
-      if (state.activeTab === 'myposts') return;
-      state.activeTab = 'myposts';
-      feedTabMyPosts.classList.add('border-green-500', 'text-white');
-      feedTabMyPosts.classList.remove('border-transparent', 'text-neutral-400');
-      feedTabTimeline.classList.remove('border-green-500', 'text-white');
-      feedTabTimeline.classList.add('border-transparent', 'text-neutral-400');
-      loadTimelineFeed();
-    });
-  }
-
-  // 8. Inline Composer
-  const composerTextarea = document.getElementById('composer-textarea');
-  const btnInlinePublish = document.getElementById('btn-inline-publish');
-
-  if (composerTextarea) {
-    composerTextarea.addEventListener('input', () => {
-      updateCharCounter(composerTextarea.value.length, 'composer-char-count');
-    });
-  }
-
-  if (btnInlinePublish && composerTextarea) {
-    btnInlinePublish.addEventListener('click', async () => {
-      await publishPost(composerTextarea.value);
-    });
-  }
-
-  // 9. Modal Composer
-  const btnOpenComposer = document.querySelectorAll('.btn-open-composer');
-  const btnCloseComposer = document.getElementById('btn-close-composer');
-  const modalTextarea = document.getElementById('modal-composer-textarea');
-  const btnModalPublish = document.getElementById('btn-modal-publish');
-
-  btnOpenComposer.forEach((btn) => {
-    btn.addEventListener('click', openComposerModal);
+  feedTabTimeline?.addEventListener('click', () => {
+    feedTabTimeline.className = 'flex-1 py-3 text-center border-b-2 border-green-500 text-white transition';
+    if (feedTabMyPosts) feedTabMyPosts.className = 'flex-1 py-3 text-center border-b-2 border-transparent text-neutral-400 hover:text-white transition';
+    loadFeed('timeline');
   });
 
-  if (btnCloseComposer) {
-    btnCloseComposer.addEventListener('click', closeComposerModal);
-  }
+  feedTabMyPosts?.addEventListener('click', () => {
+    feedTabMyPosts.className = 'flex-1 py-3 text-center border-b-2 border-green-500 text-white transition';
+    if (feedTabTimeline) feedTabTimeline.className = 'flex-1 py-3 text-center border-b-2 border-transparent text-neutral-400 hover:text-white transition';
+    loadFeed('myposts');
+  });
 
-  if (modalTextarea) {
-    modalTextarea.addEventListener('input', () => {
-      updateCharCounter(modalTextarea.value.length, 'modal-char-count');
+  // 7. Profile Subtabs (My Posts vs Server Info)
+  const profSubtabPosts = document.getElementById('profile-subtab-posts');
+  const profSubtabServer = document.getElementById('profile-subtab-server');
+  const profPostsContainer = document.getElementById('profile-posts-container');
+  const profServerContainer = document.getElementById('profile-server-container');
+
+  profSubtabPosts?.addEventListener('click', () => {
+    profSubtabPosts.className = 'flex-1 py-3 text-center border-b-2 border-green-500 text-white transition';
+    if (profSubtabServer) profSubtabServer.className = 'flex-1 py-3 text-center border-b-2 border-transparent text-neutral-400 hover:text-white transition';
+    profPostsContainer?.classList.remove('hidden');
+    profServerContainer?.classList.add('hidden');
+    loadFeed('myposts');
+  });
+
+  profSubtabServer?.addEventListener('click', () => {
+    profSubtabServer.className = 'flex-1 py-3 text-center border-b-2 border-green-500 text-white transition';
+    if (profSubtabPosts) profSubtabPosts.className = 'flex-1 py-3 text-center border-b-2 border-transparent text-neutral-400 hover:text-white transition';
+    profPostsContainer?.classList.add('hidden');
+    profServerContainer?.classList.remove('hidden');
+  });
+
+  // 8. Refresh Feed
+  document.getElementById('btn-refresh-feed')?.addEventListener('click', () => {
+    loadFeed(state.activeFeedTab);
+  });
+
+  // 9. Logout Triggers
+  document.querySelectorAll('.btn-logout-trigger').forEach((btn) => {
+    btn.addEventListener('click', logoutUser);
+  });
+
+  // 10. Composer Modal Open / Close
+  document.querySelectorAll('.btn-open-composer').forEach((btn) => {
+    btn.addEventListener('click', () => openModal('composer-modal'));
+  });
+  document.getElementById('btn-close-composer')?.addEventListener('click', () => closeModal('composer-modal'));
+
+  // 11. Character Counters
+  document.getElementById('composer-textarea')?.addEventListener('input', updateCharCounter);
+  document.getElementById('modal-composer-textarea')?.addEventListener('input', updateCharCounter);
+
+  // 12. Inline Media Pickers (Photos & Video)
+  const inlineFileImages = document.getElementById('inline-file-images');
+  const inlineFileVideo = document.getElementById('inline-file-video');
+
+  document.getElementById('btn-inline-add-photo')?.addEventListener('click', () => inlineFileImages?.click());
+  document.getElementById('btn-inline-add-video')?.addEventListener('click', () => inlineFileVideo?.click());
+
+  inlineFileImages?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      state.inlineImages = [...state.inlineImages, ...Array.from(e.target.files)].slice(0, 4);
+      renderComposerAttachments('inline');
+    }
+  });
+
+  inlineFileVideo?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      state.inlineVideo = e.target.files[0];
+      renderComposerAttachments('inline');
+    }
+  });
+
+  document.getElementById('btn-inline-remove-video')?.addEventListener('click', () => {
+    state.inlineVideo = null;
+    if (inlineFileVideo) inlineFileVideo.value = '';
+    renderComposerAttachments('inline');
+  });
+
+  // 13. Modal Media Pickers (Photos & Video)
+  const modalFileImages = document.getElementById('modal-file-images');
+  const modalFileVideo = document.getElementById('modal-file-video');
+
+  document.getElementById('btn-modal-add-photo')?.addEventListener('click', () => modalFileImages?.click());
+  document.getElementById('btn-modal-add-video')?.addEventListener('click', () => modalFileVideo?.click());
+
+  modalFileImages?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      state.modalImages = [...state.modalImages, ...Array.from(e.target.files)].slice(0, 4);
+      renderComposerAttachments('modal');
+    }
+  });
+
+  modalFileVideo?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      state.modalVideo = e.target.files[0];
+      renderComposerAttachments('modal');
+    }
+  });
+
+  document.getElementById('btn-modal-remove-video')?.addEventListener('click', () => {
+    state.modalVideo = null;
+    if (modalFileVideo) modalFileVideo.value = '';
+    renderComposerAttachments('modal');
+  });
+
+  // Remove individual photo attachment
+  document.addEventListener('click', (e) => {
+    const removeBtn = e.target.closest('.btn-remove-img');
+    if (removeBtn) {
+      const context = removeBtn.dataset.context;
+      const index = parseInt(removeBtn.dataset.index, 10);
+      if (context === 'inline') {
+        state.inlineImages.splice(index, 1);
+        renderComposerAttachments('inline');
+      } else {
+        state.modalImages.splice(index, 1);
+        renderComposerAttachments('modal');
+      }
+    }
+  });
+
+  // 14. Publish Post Triggers
+  document.getElementById('btn-inline-publish')?.addEventListener('click', () => {
+    const text = document.getElementById('composer-textarea')?.value || '';
+    publishPost({
+      text,
+      images: state.inlineImages,
+      video: state.inlineVideo,
     });
-  }
+  });
 
-  if (btnModalPublish && modalTextarea) {
-    btnModalPublish.addEventListener('click', async () => {
-      const ok = await publishPost(modalTextarea.value);
-      if (ok) {
-        modalTextarea.value = '';
-        updateCharCounter(0, 'modal-char-count');
+  document.getElementById('btn-modal-publish')?.addEventListener('click', () => {
+    const text = document.getElementById('modal-composer-textarea')?.value || '';
+    publishPost({
+      text,
+      images: state.modalImages,
+      video: state.modalVideo,
+    });
+  });
+
+  // 15. Search Input with Debounce
+  const searchInput = document.getElementById('search-input');
+  const searchClearBtn = document.getElementById('search-clear-btn');
+  let searchTimeout = null;
+
+  searchInput?.addEventListener('input', (e) => {
+    const q = e.target.value;
+    if (q) {
+      searchClearBtn?.classList.remove('hidden');
+    } else {
+      searchClearBtn?.classList.add('hidden');
+    }
+
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      searchAccounts(q);
+    }, 350);
+  });
+
+  searchClearBtn?.addEventListener('click', () => {
+    if (searchInput) searchInput.value = '';
+    searchClearBtn.classList.add('hidden');
+    searchAccounts('');
+  });
+
+  document.querySelectorAll('.search-tag-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const tag = chip.dataset.query;
+      if (searchInput) {
+        searchInput.value = tag;
+        searchClearBtn?.classList.remove('hidden');
+        searchAccounts(tag);
       }
     });
+  });
+
+  // 16. Follow / Unfollow Delegate
+  document.addEventListener('click', (e) => {
+    const followBtn = e.target.closest('.btn-follow-toggle');
+    if (followBtn) {
+      toggleFollowActor(followBtn);
+    }
+  });
+
+  // 17. Like, Repost & Share Delegates on Posts
+  document.addEventListener('click', (e) => {
+    const likeBtn = e.target.closest('.btn-post-like');
+    if (likeBtn) {
+      e.preventDefault();
+      toggleLikePost(likeBtn);
+      return;
+    }
+
+    const repostBtn = e.target.closest('.btn-post-repost');
+    if (repostBtn) {
+      e.preventDefault();
+      toggleRepostPost(repostBtn);
+      return;
+    }
+
+    const shareBtn = e.target.closest('.btn-post-share');
+    if (shareBtn) {
+      e.preventDefault();
+      const author = shareBtn.dataset.author;
+      const rkey = shareBtn.dataset.rkey;
+      const postUrl = `https://postersocial.app/profile/${author}/post/${rkey}`;
+
+      if (navigator.share) {
+        navigator.share({
+          title: `Post on Postr Social (@${author})`,
+          text: `Check out this post on Postr Social:`,
+          url: postUrl,
+        }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(postUrl).then(() => {
+          showToast('Post link copied to clipboard!', 'success');
+        }).catch(() => {
+          showToast('Could not copy link', 'error');
+        });
+      }
+    }
+  });
+
+  // 18. Profile Editing Modal & Avatar Picker
+  document.getElementById('btn-open-edit-profile')?.addEventListener('click', () => {
+    if (state.profile) {
+      renderUserProfileUI(state.profile);
+    }
+    openModal('edit-profile-modal');
+  });
+  document.getElementById('btn-close-edit-profile')?.addEventListener('click', () => closeModal('edit-profile-modal'));
+  document.getElementById('btn-cancel-edit-profile')?.addEventListener('click', () => closeModal('edit-profile-modal'));
+
+  const avatarFileInput = document.getElementById('profile-avatar-file-input');
+  document.getElementById('btn-trigger-avatar-change')?.addEventListener('click', () => avatarFileInput?.click());
+  document.getElementById('btn-edit-avatar-picker')?.addEventListener('click', () => avatarFileInput?.click());
+
+  avatarFileInput?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      state.pendingAvatarFile = file;
+      const previewImg = document.getElementById('edit-profile-avatar-preview');
+      if (previewImg) {
+        previewImg.src = URL.createObjectURL(file);
+      }
+    }
+  });
+
+  document.getElementById('edit-bio')?.addEventListener('input', (e) => {
+    const len = e.target.value.length;
+    const charCountEl = document.getElementById('edit-bio-char-count');
+    if (charCountEl) charCountEl.textContent = 256 - len;
+  });
+
+  document.getElementById('form-edit-profile')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const displayName = document.getElementById('edit-display-name')?.value || '';
+    const description = document.getElementById('edit-bio')?.value || '';
+
+    await saveProfileChanges({
+      displayName,
+      description,
+      avatarFile: state.pendingAvatarFile,
+    });
+  });
+
+  // 19. PWA Install Prompts (Chromium & iOS)
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    state.deferredInstallPrompt = e;
+    document.querySelectorAll('.pwa-install-trigger').forEach((btn) => btn.classList.remove('hidden'));
+  });
+
+  document.querySelectorAll('.pwa-install-trigger').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (state.deferredInstallPrompt) {
+        state.deferredInstallPrompt.prompt();
+        const { outcome } = await state.deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') {
+          showToast('Thank you for installing Postr Social!', 'success');
+          document.querySelectorAll('.pwa-install-trigger').forEach((b) => b.classList.add('hidden'));
+        }
+        state.deferredInstallPrompt = null;
+      } else {
+        // Show iOS guide if on iOS or unsupported
+        openModal('pwa-ios-modal');
+      }
+    });
+  });
+
+  document.getElementById('pwa-ios-close')?.addEventListener('click', () => closeModal('pwa-ios-modal'));
+
+  // 20. Online / Offline Connectivity Monitor
+  window.addEventListener('online', () => {
+    state.isOnline = true;
+    document.getElementById('offline-indicator')?.classList.add('hidden');
+    showToast('Internet connection restored.', 'success');
+    if (state.session) loadFeed(state.activeFeedTab);
+  });
+
+  window.addEventListener('offline', () => {
+    state.isOnline = false;
+    document.getElementById('offline-indicator')?.classList.remove('hidden');
+    showToast('You are currently offline.', 'info');
+  });
+
+  if (!navigator.onLine) {
+    document.getElementById('offline-indicator')?.classList.remove('hidden');
   }
 }
 
-// Bootstrap on DOM Ready
-document.addEventListener('DOMContentLoaded', async () => {
-  setupEventListeners();
-  initPWAInstallation();
-  initNetworkMonitor();
-
+// ==========================================
+// Bootstrap Application
+// ==========================================
+async function bootstrapApp() {
+  initEventListeners();
   const resumed = await resumeExistingSession();
   if (!resumed) {
-    renderLoggedOutView();
+    document.getElementById('auth-view')?.classList.remove('hidden');
+    document.getElementById('dashboard-view')?.classList.add('hidden');
+    document.getElementById('mobile-bottom-nav')?.classList.add('hidden');
   }
-});
+}
+
+// Kick off when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrapApp);
+} else {
+  bootstrapApp();
+}

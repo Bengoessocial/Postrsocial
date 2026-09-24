@@ -6,14 +6,14 @@
     
     <!-- Title & SEO Metadata -->
     <title>Postr Social</title>
-    <meta name="description" content="A clean, modern, mobile-first AT Protocol Progressive Web App for postrsocial.app." />
+    <meta name="description" content="A clean, modern, mobile-first AT Protocol Progressive Web App for postersocial.app." />
     <meta property="og:title" content="Postr Social" />
-    <meta property="og:description" content="A clean, modern, mobile-first AT Protocol Progressive Web App for postrsocial.app." />
+    <meta property="og:description" content="A clean, modern, mobile-first AT Protocol Progressive Web App for postersocial.app." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://postrsocial.app" />
+    <meta property="og:url" content="https://postersocial.app" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Postr Social" />
-    <meta name="twitter:description" content="A clean, modern, mobile-first AT Protocol Progressive Web App for postrsocial.app." />
+    <meta name="twitter:description" content="A clean, modern, mobile-first AT Protocol Progressive Web App for postersocial.app." />
     
     <!-- PWA & Mobile Web App Compliance -->
     <meta name="theme-color" content="#000000" />
@@ -26,7 +26,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-    <!-- Tailwind CSS (CDN configured for deep black and vibrant green #22c55e) -->
+    <!-- Tailwind CSS CDN configured for deep black (#000000) and vibrant green (#22c55e) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -35,17 +35,17 @@
           extend: {
             colors: {
               brand: {
-                green: '#22c55e',
+                DEFAULT: '#22c55e',
+                hover: '#16a34a',
                 light: '#4ade80',
-                dark: '#16a34a',
-                emerald: '#10b981'
+                dark: '#15803d',
+                glow: 'rgba(34, 197, 94, 0.15)',
               }
             }
           }
         }
       }
     </script>
-    <link rel="stylesheet" href="/src/index.css" />
 
     <style>
       :root {
@@ -73,12 +73,12 @@
     </style>
   </head>
 
-  <body class="min-h-full flex flex-col bg-black text-white font-sans">
+  <body class="min-h-full flex flex-col bg-black text-white font-sans selection:bg-green-500/30">
 
     <!-- Connectivity / Offline Banner -->
     <div id="offline-indicator" class="hidden sticky top-0 z-50 bg-amber-500 text-black px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-md">
       <span class="w-2 h-2 rounded-full bg-black animate-pulse"></span>
-      <span>Offline Mode — actions will sync when connection to postrsocial.app is restored.</span>
+      <span>Offline Mode — actions will sync when connection to postersocial.app is restored.</span>
     </div>
 
     <!-- Application Shell / Layout Container -->
@@ -100,7 +100,7 @@
             <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/30">AT Protocol</span>
           </h1>
           <p class="text-xs sm:text-sm text-neutral-400 mt-1.5 max-w-sm mx-auto">
-            Decentralized social networking hosted at <span class="text-green-400 font-mono font-medium">postrsocial.app</span>
+            Decentralized social networking hosted at <span class="text-green-400 font-mono font-medium">postersocial.app</span>
           </p>
 
           <!-- In-App PWA Install Banner -->
@@ -131,7 +131,7 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
             </svg>
-            <span id="auth-status-label">Connecting to postrsocial.app...</span>
+            <span id="auth-status-label">Connecting to postersocial.app...</span>
           </div>
 
           <!-- Error Alert Banner -->
@@ -149,21 +149,21 @@
                 <label for="login-identifier" class="block text-xs font-semibold text-neutral-300">
                   Handle or Email
                 </label>
-                <span class="text-[10px] font-mono text-green-400/90">@postrsocial.app</span>
+                <span class="text-[10px] font-mono text-green-400/90">@postersocial.app</span>
               </div>
               <input
                 id="login-identifier"
                 type="text"
                 autocomplete="username"
-                placeholder="alice.postrsocial.app or user@domain.com"
+                placeholder="alice.postersocial.app or user@domain.com"
                 required
                 class="w-full px-3.5 py-2.5 bg-black border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition"
               />
               <!-- Quick Suffix Helper Chips -->
               <div class="mt-2 flex items-center gap-1.5 flex-wrap">
                 <span class="text-[10px] text-neutral-500">Quick suffix:</span>
-                <button type="button" class="btn-suffix-chip px-2 py-0.5 rounded-md bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-300 hover:text-green-400 hover:border-green-500/50 transition font-mono" data-target-input="login-identifier" data-suffix=".postrsocial.app">
-                  .postrsocial.app
+                <button type="button" class="btn-suffix-chip px-2 py-0.5 rounded-md bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-300 hover:text-green-400 hover:border-green-500/50 transition font-mono" data-target-input="login-identifier" data-suffix=".postersocial.app">
+                  .postersocial.app
                 </button>
                 <button type="button" class="btn-suffix-chip px-2 py-0.5 rounded-md bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-300 hover:text-green-400 hover:border-green-500/50 transition font-mono" data-target-input="login-identifier" data-suffix=".bsky.social">
                   .bsky.social
@@ -188,7 +188,7 @@
             <!-- Endpoint Notice -->
             <div class="p-2.5 rounded-xl bg-black border border-neutral-900 flex items-center justify-between text-xs">
               <span class="text-neutral-400 text-[11px]">Target PDS:</span>
-              <span class="text-green-400 font-mono text-[11px] font-semibold">https://postrsocial.app</span>
+              <span class="text-green-400 font-mono text-[11px] font-semibold">https://postersocial.app</span>
             </div>
 
             <!-- Login Action Button in Vibrant Green -->
@@ -205,7 +205,7 @@
             </button>
           </form>
 
-          <!-- 2. SIGNUP FORM (Targeting postrsocial.app, invite codes disabled) -->
+          <!-- 2. SIGNUP FORM (Targeting postersocial.app, invite codes disabled) -->
           <form id="form-signup" class="hidden space-y-4">
             
             <!-- Open Registration Banner (Invite Codes Disabled) -->
@@ -214,7 +214,7 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                <span>Open Registration on postrsocial.app</span>
+                <span>Open Registration on postersocial.app</span>
               </div>
               <p class="text-[11px] text-neutral-400">
                 Invite codes are disabled on this PDS. You can create your account directly below.
@@ -243,7 +243,7 @@
                 <input
                   id="signup-handle"
                   type="text"
-                  placeholder="username.postrsocial.app"
+                  placeholder="username.postersocial.app"
                   required
                   class="w-full px-3.5 py-2.5 bg-black border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition"
                 />
@@ -251,8 +251,8 @@
               <!-- Quick Suffix Helper Chips -->
               <div class="mt-2 flex items-center gap-1.5 flex-wrap">
                 <span class="text-[10px] text-neutral-500">Append:</span>
-                <button type="button" class="btn-suffix-chip px-2 py-0.5 rounded-md bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-300 hover:text-green-400 hover:border-green-500/50 transition font-mono" data-target-input="signup-handle" data-suffix=".postrsocial.app">
-                  .postrsocial.app
+                <button type="button" class="btn-suffix-chip px-2 py-0.5 rounded-md bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-300 hover:text-green-400 hover:border-green-500/50 transition font-mono" data-target-input="signup-handle" data-suffix=".postersocial.app">
+                  .postersocial.app
                 </button>
               </div>
             </div>
@@ -282,16 +282,35 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
               </svg>
-              <span>Create Account on postrsocial.app</span>
+              <span>Create Account on postersocial.app</span>
             </button>
           </form>
+
+          <!-- Instant Demo Preview Button -->
+          <div class="mt-5 pt-4 border-t border-neutral-900 text-center">
+            <div class="flex items-center gap-2 mb-3">
+              <div class="flex-1 h-px bg-neutral-900"></div>
+              <span class="text-[10px] text-neutral-500 uppercase tracking-widest font-mono font-medium">Quick Preview</span>
+              <div class="flex-1 h-px bg-neutral-900"></div>
+            </div>
+            <button
+              id="btn-demo-login"
+              type="button"
+              class="w-full py-2.5 px-4 rounded-xl bg-neutral-900 hover:bg-neutral-800/80 border border-neutral-800 hover:border-green-500/50 text-white font-medium text-xs transition flex items-center justify-center gap-2 cursor-pointer group shadow-sm"
+            >
+              <svg class="w-4 h-4 text-green-400 group-hover:scale-110 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>Explore Demo as <strong class="text-green-400 font-mono">@alex.postersocial.app</strong></span>
+            </button>
+          </div>
 
         </div>
 
         <!-- Footnote info -->
         <div class="mt-6 text-center text-xs text-neutral-400 flex items-center justify-center gap-2">
           <span>Host:</span>
-          <span class="text-green-400 font-mono font-medium">postrsocial.app</span>
+          <span class="text-green-400 font-mono font-medium">postersocial.app</span>
           <span>•</span>
           <a href="https://atproto.com" target="_blank" rel="noopener noreferrer" class="hover:text-green-400 transition">AT Protocol v1</a>
         </div>
@@ -299,32 +318,44 @@
       </section>
 
       <!-- ======================================================== -->
-      <!-- VIEW 2: LOGGED-IN DASHBOARD                              -->
+      <!-- VIEW 2: LOGGED-IN APPLICATION SHELL                     -->
       <!-- ======================================================== -->
-      <section id="dashboard-view" class="hidden flex-1 flex flex-col pb-20 sm:pb-12">
+      <section id="dashboard-view" class="hidden flex-1 flex flex-col pb-20 sm:pb-8">
         
-        <!-- Sticky Glassmorphic Top App Bar -->
+        <!-- Sticky Top App Bar -->
         <header class="sticky top-0 z-40 bg-black/90 backdrop-blur-md border-b border-neutral-900 px-4 py-3 flex items-center justify-between">
           <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-center overflow-hidden">
-              <img src="/icon.svg" alt="Postr" class="w-5 h-5 object-contain" />
-            </div>
-            <div>
-              <span class="text-sm font-bold text-white tracking-tight">Postr Social</span>
-              <span id="active-pds-badge" class="block text-[10px] font-mono text-green-400 truncate max-w-[140px] sm:max-w-[200px]">
-                postrsocial.app
-              </span>
-            </div>
+            <button id="nav-btn-home-logo" class="flex items-center gap-2.5 text-left group">
+              <div class="w-8 h-8 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-center overflow-hidden group-hover:border-green-500/50 transition">
+                <img src="/icon.svg" alt="Postr" class="w-5 h-5 object-contain" />
+              </div>
+              <div>
+                <span class="text-sm font-bold text-white tracking-tight flex items-center gap-1">
+                  Postr Social
+                  <span class="inline-block w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                </span>
+                <span id="active-pds-badge" class="block text-[10px] font-mono text-green-400 truncate max-w-[140px] sm:max-w-[200px]">
+                  postersocial.app
+                </span>
+              </div>
+            </button>
           </div>
 
           <!-- Topbar Actions -->
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
             <!-- In-App PWA Install Button -->
-            <button class="pwa-install-trigger hidden px-2.5 py-1 rounded-lg bg-neutral-900 border border-green-500/40 text-green-400 text-xs font-semibold flex items-center gap-1.5 hover:border-green-500 transition">
+            <button class="pwa-install-trigger hidden px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-green-500/40 text-green-400 text-xs font-semibold flex items-center gap-1.5 hover:border-green-500 transition">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
               </svg>
-              <span>Install</span>
+              <span class="hidden sm:inline">Install</span>
+            </button>
+
+            <!-- Search Quick Trigger -->
+            <button id="top-btn-search" class="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-900 transition" title="Search Accounts">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
             </button>
 
             <!-- Refresh Feed Button -->
@@ -338,93 +369,349 @@
               </svg>
             </button>
 
-            <!-- Logout Button -->
-            <button class="btn-logout-trigger p-2 rounded-xl text-neutral-400 hover:text-rose-400 hover:bg-neutral-900 transition" title="Sign Out">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+            <!-- Quick Composer Trigger in Header -->
+            <button class="btn-open-composer hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-500 hover:bg-green-400 text-black text-xs font-bold shadow-md shadow-green-950/50 transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
               </svg>
+              <span>Post</span>
+            </button>
+
+            <!-- Top Profile Avatar Pill -->
+            <button id="top-btn-profile" class="p-1 rounded-full border border-neutral-800 hover:border-green-500/60 transition ml-1" title="View Profile">
+              <img class="user-avatar-target w-6 h-6 rounded-full object-cover" src="/icon.svg" alt="Avatar" />
             </button>
           </div>
         </header>
 
-        <!-- User Profile Summary Card -->
-        <div class="p-4 border-b border-neutral-900 bg-neutral-950">
-          <div class="flex items-center gap-3">
-            <img class="user-avatar-target w-12 h-12 rounded-full object-cover border border-green-500/50" src="/icon.svg" alt="Profile avatar" />
-            <div class="flex-1 min-w-0">
-              <h2 class="user-name-target text-sm font-bold text-white truncate">Postr User</h2>
-              <p class="user-handle-target text-xs text-neutral-400 truncate">@handle</p>
-              <p class="user-did-target text-[10px] font-mono text-neutral-500 truncate cursor-pointer" title="DID Identifier">did:plc:...</p>
-            </div>
-            <!-- Quick New Post Trigger in Vibrant Green -->
-            <button class="btn-open-composer px-3.5 py-1.5 rounded-xl bg-green-500 hover:bg-green-400 text-black text-xs font-bold shadow-md shadow-green-950/50 transition">
-              + Post
-            </button>
-          </div>
-        </div>
+        <!-- ======================================================== -->
+        <!-- SUBVIEW A: HOME SOCIAL FEED                              -->
+        <!-- ======================================================== -->
+        <div id="subview-feed" class="flex-1 flex flex-col">
+          
+          <!-- Inline Post Composer (Top of Feed) -->
+          <div class="p-4 border-b border-neutral-900 bg-neutral-950/60">
+            <div class="flex gap-3">
+              <img class="user-avatar-target w-10 h-10 rounded-full object-cover border border-neutral-800 shrink-0" src="/icon.svg" alt="Avatar" />
+              <div class="flex-1 min-w-0">
+                <textarea
+                  id="composer-textarea"
+                  rows="3"
+                  maxlength="300"
+                  placeholder="What's happening on postersocial.app?"
+                  class="w-full bg-transparent text-sm text-white placeholder-neutral-500 resize-none focus:outline-none selection:bg-green-500/30"
+                ></textarea>
 
-        <!-- Inline Post Composer (Top of Feed) -->
-        <div class="p-4 border-b border-neutral-900 bg-neutral-950/40">
-          <div class="flex gap-3">
-            <img class="user-avatar-target w-9 h-9 rounded-full object-cover border border-neutral-800 shrink-0" src="/icon.svg" alt="" />
-            <div class="flex-1">
-              <textarea
-                id="composer-textarea"
-                rows="2"
-                maxlength="300"
-                placeholder="What's happening on postrsocial.app?"
-                class="w-full bg-transparent text-sm text-white placeholder-neutral-500 resize-none focus:outline-none selection:bg-green-500/30"
-              ></textarea>
-              <div class="mt-2 pt-2 border-t border-neutral-900 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span id="composer-char-count" class="text-xs font-mono text-neutral-500">300</span>
-                  <span class="text-[11px] text-neutral-600">chars remaining</span>
+                <!-- Attachment Previews Container (Inline) -->
+                <div id="inline-attachments-preview" class="hidden mb-3 space-y-2">
+                  <!-- Photos preview grid -->
+                  <div id="inline-images-grid" class="flex gap-2 flex-wrap"></div>
+                  <!-- Video preview card -->
+                  <div id="inline-video-preview-box" class="hidden relative rounded-xl overflow-hidden border border-neutral-800 bg-black">
+                    <video id="inline-video-player" controls class="w-full max-h-48 rounded-xl object-contain bg-black"></video>
+                    <button id="btn-inline-remove-video" type="button" class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/80 text-white hover:bg-rose-600 flex items-center justify-center text-xs transition" title="Remove video">✕</button>
+                  </div>
                 </div>
-                <button
-                  id="btn-inline-publish"
-                  class="btn-publish-trigger px-4 py-1.5 rounded-xl bg-green-500 hover:bg-green-400 text-black font-bold text-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                >
-                  <svg class="btn-spinner hidden w-3 h-3 animate-spin text-black" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                  </svg>
-                  <span>Post</span>
-                </button>
+
+                <!-- Hidden file inputs for attachments -->
+                <input id="inline-file-images" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple class="hidden" />
+                <input id="inline-file-video" type="file" accept="video/mp4,video/webm,video/quicktime" class="hidden" />
+
+                <!-- Composer Action Bar -->
+                <div class="pt-2.5 border-t border-neutral-900 flex items-center justify-between">
+                  <!-- Media pickers -->
+                  <div class="flex items-center gap-2">
+                    <button
+                      id="btn-inline-add-photo"
+                      type="button"
+                      class="p-2 rounded-lg text-neutral-400 hover:text-green-400 hover:bg-neutral-900 transition flex items-center gap-1 text-xs"
+                      title="Attach Photos"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                      </svg>
+                      <span class="text-[11px] hidden sm:inline">Photo</span>
+                    </button>
+
+                    <button
+                      id="btn-inline-add-video"
+                      type="button"
+                      class="p-2 rounded-lg text-neutral-400 hover:text-green-400 hover:bg-neutral-900 transition flex items-center gap-1 text-xs"
+                      title="Upload Video"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                      </svg>
+                      <span class="text-[11px] hidden sm:inline">Video</span>
+                    </button>
+                  </div>
+
+                  <!-- Counter and Submit -->
+                  <div class="flex items-center gap-3">
+                    <span id="composer-char-count" class="text-xs font-mono text-neutral-500">300</span>
+                    <button
+                      id="btn-inline-publish"
+                      class="btn-publish-trigger px-4 py-1.5 rounded-xl bg-green-500 hover:bg-green-400 text-black font-bold text-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-md shadow-green-950/40"
+                    >
+                      <svg class="btn-spinner hidden w-3 h-3 animate-spin text-black" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                      </svg>
+                      <span>Post</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Feed Filter Tabs (Timeline vs My Posts) -->
-        <div class="flex border-b border-neutral-900 bg-black text-xs font-semibold">
-          <button id="feed-tab-timeline" class="flex-1 py-3 text-center border-b-2 border-green-500 text-white transition">
-            Timeline Feed
-          </button>
-          <button id="feed-tab-myposts" class="flex-1 py-3 text-center border-b-2 border-transparent text-neutral-400 hover:text-white transition">
-            My Posts
-          </button>
-        </div>
-
-        <!-- Feed List Stream -->
-        <main id="feed-container" class="divide-y divide-neutral-900">
-          <div class="p-8 text-center text-neutral-500 text-xs flex flex-col items-center justify-center gap-2">
-            <svg class="w-6 h-6 animate-spin text-green-500" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-            </svg>
-            <span>Connecting to postrsocial.app timeline...</span>
+          <!-- Feed Filter Tabs (Timeline vs My Posts) -->
+          <div class="flex border-b border-neutral-900 bg-black text-xs font-semibold sticky top-[53px] z-30 backdrop-blur-md bg-black/90">
+            <button id="feed-tab-timeline" class="flex-1 py-3 text-center border-b-2 border-green-500 text-white transition">
+              Home Timeline
+            </button>
+            <button id="feed-tab-myposts" class="flex-1 py-3 text-center border-b-2 border-transparent text-neutral-400 hover:text-white transition">
+              My Posts
+            </button>
           </div>
-        </main>
+
+          <!-- Feed List Stream -->
+          <main id="feed-container" class="divide-y divide-neutral-900">
+            <div class="p-8 text-center text-neutral-500 text-xs flex flex-col items-center justify-center gap-2">
+              <svg class="w-6 h-6 animate-spin text-green-500" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+              <span>Connecting to postersocial.app timeline...</span>
+            </div>
+          </main>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- SUBVIEW B: SEARCH & ACCOUNT DISCOVERY                     -->
+        <!-- ======================================================== -->
+        <div id="subview-search" class="hidden flex-1 flex flex-col">
+          
+          <!-- Search Header Bar -->
+          <div class="p-4 border-b border-neutral-900 bg-neutral-950/80 sticky top-[53px] z-30">
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+              </div>
+              <input
+                id="search-input"
+                type="search"
+                placeholder="Search users on postersocial.app..."
+                autocomplete="off"
+                class="w-full pl-10 pr-10 py-2.5 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition"
+              />
+              <button id="search-clear-btn" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            <!-- Suggested handles chips -->
+            <div class="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+              <span class="text-[11px] text-neutral-500 shrink-0">Explore:</span>
+              <button class="search-tag-chip px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-green-400 transition shrink-0" data-query="postersocial.app">
+                #postersocial.app
+              </button>
+              <button class="search-tag-chip px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-green-400 transition shrink-0" data-query="news">
+                #news
+              </button>
+              <button class="search-tag-chip px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-green-400 transition shrink-0" data-query="tech">
+                #tech
+              </button>
+              <button class="search-tag-chip px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-green-400 transition shrink-0" data-query="art">
+                #art
+              </button>
+            </div>
+          </div>
+
+          <!-- Search Status & Results Container -->
+          <div id="search-results-container" class="divide-y divide-neutral-900">
+            <div class="py-16 text-center text-neutral-500 text-xs">
+              Type in the box above to discover accounts on the AT Protocol network.
+            </div>
+          </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- SUBVIEW C: PROFILE VIEW & EDITING                         -->
+        <!-- ======================================================== -->
+        <div id="subview-profile" class="hidden flex-1 flex flex-col">
+          
+          <!-- Profile Hero Banner -->
+          <div id="profile-banner" class="h-32 sm:h-40 bg-gradient-to-r from-neutral-950 via-neutral-900 to-green-950/40 border-b border-neutral-900 relative"></div>
+
+          <!-- Profile Details Section -->
+          <div class="px-4 pb-4 border-b border-neutral-900 bg-neutral-950/40 relative">
+            <!-- Avatar & Action Buttons Row -->
+            <div class="flex items-end justify-between -mt-12 sm:-mt-14 mb-3">
+              <div class="relative group">
+                <img
+                  id="profile-view-avatar"
+                  class="user-avatar-target w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover border-4 border-black bg-neutral-950 shadow-2xl"
+                  src="/icon.svg"
+                  alt="Profile Avatar"
+                />
+                <button
+                  id="btn-trigger-avatar-change"
+                  class="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-[10px] text-green-400 font-bold transition duration-150"
+                  title="Change avatar"
+                >
+                  <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                  <span>Edit</span>
+                </button>
+              </div>
+
+              <!-- Edit Profile Trigger Button -->
+              <button
+                id="btn-open-edit-profile"
+                class="px-4 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white hover:border-green-500/80 text-xs font-bold transition flex items-center gap-1.5 shadow-md"
+              >
+                <svg class="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+                <span>Edit Profile</span>
+              </button>
+            </div>
+
+            <!-- Name, Handle & DID -->
+            <div>
+              <h2 id="profile-view-name" class="user-name-target text-lg sm:text-xl font-extrabold text-white">Postr User</h2>
+              <p id="profile-view-handle" class="user-handle-target text-xs text-neutral-400 font-mono mt-0.5">@handle</p>
+              <p id="profile-view-did" class="user-did-target text-[10px] font-mono text-neutral-500 mt-1 truncate cursor-pointer" title="DID Identifier">did:plc:...</p>
+            </div>
+
+            <!-- Bio / Description -->
+            <div id="profile-view-bio" class="mt-3 text-xs sm:text-sm text-neutral-200 leading-relaxed whitespace-pre-line">
+              Welcome to Postr Social on postersocial.app!
+            </div>
+
+            <!-- Follower / Following / Post Counters -->
+            <div class="mt-4 pt-3 border-t border-neutral-900 flex items-center gap-6 text-xs">
+              <div>
+                <span id="user-posts-count" class="font-bold text-white">0</span>
+                <span class="text-neutral-400 ml-1">posts</span>
+              </div>
+              <div>
+                <span id="user-followers-count" class="font-bold text-white">0</span>
+                <span class="text-neutral-400 ml-1">followers</span>
+              </div>
+              <div>
+                <span id="user-follows-count" class="font-bold text-white">0</span>
+                <span class="text-neutral-400 ml-1">following</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Profile Nav Tabs -->
+          <div class="flex border-b border-neutral-900 bg-black text-xs font-semibold">
+            <button id="profile-subtab-posts" class="flex-1 py-3 text-center border-b-2 border-green-500 text-white transition">
+              My Posts
+            </button>
+            <button id="profile-subtab-server" class="flex-1 py-3 text-center border-b-2 border-transparent text-neutral-400 hover:text-white transition">
+              Server & PDS
+            </button>
+          </div>
+
+          <!-- Tab Content 1: User's Own Posts -->
+          <div id="profile-posts-container" class="divide-y divide-neutral-900">
+            <div class="p-8 text-center text-neutral-500 text-xs">Loading posts...</div>
+          </div>
+
+          <!-- Tab Content 2: Server Details & Logout -->
+          <div id="profile-server-container" class="hidden p-4 space-y-4">
+            <div class="p-4 rounded-xl bg-neutral-950 border border-neutral-900 space-y-2 text-xs">
+              <div class="font-bold text-white mb-2 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                <span>PDS Infrastructure</span>
+              </div>
+              <div class="flex justify-between py-1 border-b border-neutral-900">
+                <span class="text-neutral-400">PDS Endpoint</span>
+                <span class="font-mono text-green-400">https://postersocial.app</span>
+              </div>
+              <div class="flex justify-between py-1 border-b border-neutral-900">
+                <span class="text-neutral-400">Protocol</span>
+                <span class="font-mono text-white">AT Protocol (@atproto/api)</span>
+              </div>
+              <div class="flex justify-between py-1 border-b border-neutral-900">
+                <span class="text-neutral-400">Open Registration</span>
+                <span class="text-white">Active (Invites Disabled)</span>
+              </div>
+              <div class="flex justify-between py-1">
+                <span class="text-neutral-400">PWA Status</span>
+                <span class="text-green-400 font-semibold">Ready & Offline-Enabled</span>
+              </div>
+            </div>
+
+            <!-- Sign Out Button -->
+            <button
+              class="btn-logout-trigger w-full py-3 rounded-xl bg-neutral-900 hover:bg-rose-950/40 border border-neutral-800 hover:border-rose-600/50 text-rose-400 font-bold text-xs transition flex items-center justify-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+              </svg>
+              <span>Sign Out of Postr Social</span>
+            </button>
+          </div>
+
+        </div>
 
       </section>
 
       <!-- ======================================================== -->
-      <!-- COMPOSER MODAL (Full Screen on Mobile)                   -->
+      <!-- MOBILE BOTTOM NAVIGATION BAR                             -->
+      <!-- ======================================================== -->
+      <nav id="mobile-bottom-nav" class="hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 backdrop-blur-lg border-t border-neutral-900 max-w-xl mx-auto flex items-center justify-around py-2 px-3">
+        <!-- Feed Tab -->
+        <button id="nav-btn-feed" class="mobile-nav-btn flex flex-col items-center gap-1 text-green-500 p-1.5 transition" title="Feed">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+          </svg>
+          <span class="text-[10px] font-semibold">Feed</span>
+        </button>
+
+        <!-- Search Tab -->
+        <button id="nav-btn-search" class="mobile-nav-btn flex flex-col items-center gap-1 text-neutral-400 hover:text-white p-1.5 transition" title="Search">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <span class="text-[10px] font-semibold">Search</span>
+        </button>
+
+        <!-- Floating Compose Button (+) -->
+        <button class="btn-open-composer flex items-center justify-center w-11 h-11 rounded-full bg-green-500 hover:bg-green-400 text-black shadow-lg shadow-green-950/60 transition active:scale-95" title="New Post">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+          </svg>
+        </button>
+
+        <!-- Profile Tab -->
+        <button id="nav-btn-profile" class="mobile-nav-btn flex flex-col items-center gap-1 text-neutral-400 hover:text-white p-1.5 transition" title="Profile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+          </svg>
+          <span class="text-[10px] font-semibold">Profile</span>
+        </button>
+      </nav>
+
+      <!-- ======================================================== -->
+      <!-- MODAL 1: POST COMPOSER DIALOG                            -->
       <!-- ======================================================== -->
       <div id="composer-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
         <div class="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl flex flex-col max-h-[90vh]">
           <div class="flex items-center justify-between pb-3 border-b border-neutral-900">
-            <span class="text-sm font-bold text-white">Create Post</span>
+            <span class="text-sm font-bold text-white flex items-center gap-2">
+              <span>Create Post</span>
+              <span class="text-[10px] text-green-400 font-mono">postersocial.app</span>
+            </span>
             <button id="btn-close-composer" class="p-1 rounded-lg text-neutral-400 hover:text-white transition">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -432,70 +719,176 @@
             </button>
           </div>
 
-          <div class="pt-4 flex-1">
+          <div class="pt-4 flex-1 overflow-y-auto">
             <textarea
               id="modal-composer-textarea"
-              rows="5"
+              rows="4"
               maxlength="300"
               placeholder="What would you like to post to Postr Social?"
-              class="w-full bg-transparent text-sm text-white placeholder-neutral-500 resize-none focus:outline-none"
+              class="w-full bg-transparent text-sm text-white placeholder-neutral-500 resize-none focus:outline-none selection:bg-green-500/30"
             ></textarea>
+
+            <!-- Attachment Previews Container (Modal) -->
+            <div id="modal-attachments-preview" class="hidden mt-3 space-y-2">
+              <div id="modal-images-grid" class="flex gap-2 flex-wrap"></div>
+              <div id="modal-video-preview-box" class="hidden relative rounded-xl overflow-hidden border border-neutral-800 bg-black">
+                <video id="modal-video-player" controls class="w-full max-h-48 rounded-xl object-contain bg-black"></video>
+                <button id="btn-modal-remove-video" type="button" class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/80 text-white hover:bg-rose-600 flex items-center justify-center text-xs transition">✕</button>
+              </div>
+            </div>
+
+            <!-- Hidden modal inputs -->
+            <input id="modal-file-images" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple class="hidden" />
+            <input id="modal-file-video" type="file" accept="video/mp4,video/webm,video/quicktime" class="hidden" />
           </div>
 
-          <div class="pt-3 border-t border-neutral-900 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span id="modal-char-count" class="text-xs font-mono text-neutral-500">300</span>
-              <span class="text-[11px] text-neutral-600">limit 300</span>
+          <div class="pt-3 border-t border-neutral-900 flex items-center justify-between mt-auto">
+            <!-- Modal Media Buttons -->
+            <div class="flex items-center gap-1.5">
+              <button
+                id="btn-modal-add-photo"
+                type="button"
+                class="p-2 rounded-lg text-neutral-400 hover:text-green-400 hover:bg-neutral-900 transition flex items-center gap-1"
+                title="Add Photos"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                <span class="text-xs font-semibold">Photo</span>
+              </button>
+
+              <button
+                id="btn-modal-add-video"
+                type="button"
+                class="p-2 rounded-lg text-neutral-400 hover:text-green-400 hover:bg-neutral-900 transition flex items-center gap-1"
+                title="Add Video"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                <span class="text-xs font-semibold">Video</span>
+              </button>
             </div>
-            <button
-              id="btn-modal-publish"
-              class="btn-publish-trigger px-5 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black font-bold text-xs shadow-md shadow-green-950/40 transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-            >
-              <svg class="btn-spinner hidden w-3.5 h-3.5 animate-spin text-black" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-              </svg>
-              <span>Publish Post</span>
-            </button>
+
+            <!-- Character Count & Publish -->
+            <div class="flex items-center gap-3">
+              <span id="modal-char-count" class="text-xs font-mono text-neutral-500">300</span>
+              <button
+                id="btn-modal-publish"
+                class="btn-publish-trigger px-5 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black font-bold text-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-lg shadow-green-950/50"
+              >
+                <svg class="btn-spinner hidden w-3 h-3 animate-spin text-black" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span>Publish</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- ======================================================== -->
-      <!-- MOBILE BOTTOM NAVIGATION                                 -->
+      <!-- MODAL 2: EDIT PROFILE MODAL (Avatar, Bio, Name)          -->
       <!-- ======================================================== -->
-      <nav id="mobile-bottom-nav" class="hidden sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 backdrop-blur-lg border-t border-neutral-900 px-6 py-2 flex items-center justify-around">
-        <!-- Feed Tab -->
-        <button id="mobile-nav-feed" class="p-2 text-green-400 flex flex-col items-center gap-0.5">
-          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-          </svg>
-          <span class="text-[10px] font-bold">Home</span>
-        </button>
+      <div id="edit-profile-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="w-full max-w-md bg-neutral-950 border border-neutral-800 rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl flex flex-col max-h-[90vh]">
+          <div class="flex items-center justify-between pb-3 border-b border-neutral-900">
+            <h3 class="text-sm font-bold text-white">Edit Profile</h3>
+            <button id="btn-close-edit-profile" class="p-1 rounded-lg text-neutral-400 hover:text-white transition">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
 
-        <!-- Create Post FAB with Vibrant Green -->
-        <button class="btn-open-composer -mt-5 w-12 h-12 rounded-full bg-green-500 text-black shadow-lg shadow-green-500/40 flex items-center justify-center active:scale-95 transition">
-          <svg class="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
-          </svg>
-        </button>
+          <form id="form-edit-profile" class="pt-4 space-y-4 overflow-y-auto">
+            <!-- Avatar Upload Section -->
+            <div class="flex flex-col items-center text-center">
+              <div class="relative group cursor-pointer" id="btn-edit-avatar-picker">
+                <img
+                  id="edit-profile-avatar-preview"
+                  src="/icon.svg"
+                  alt="Avatar preview"
+                  class="w-20 h-20 rounded-full object-cover border-2 border-green-500/80 shadow-lg"
+                />
+                <div class="absolute inset-0 rounded-full bg-black/60 flex flex-col items-center justify-center text-white text-[10px] font-bold group-hover:bg-black/70 transition">
+                  <svg class="w-4 h-4 text-green-400 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                  <span>Upload</span>
+                </div>
+              </div>
+              <input id="profile-avatar-file-input" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" />
+              <span class="text-[11px] text-neutral-400 mt-2">Click avatar to select a new image</span>
+            </div>
 
-        <!-- Sign Out -->
-        <button class="btn-logout-trigger p-2 text-neutral-400 hover:text-rose-400 flex flex-col items-center gap-0.5">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-          </svg>
-          <span class="text-[10px] font-medium">Exit</span>
-        </button>
-      </nav>
+            <!-- Display Name -->
+            <div>
+              <label for="edit-display-name" class="block text-xs font-semibold text-neutral-300 mb-1">
+                Display Name
+              </label>
+              <input
+                id="edit-display-name"
+                type="text"
+                maxlength="64"
+                placeholder="Your display name"
+                class="w-full px-3.5 py-2.5 bg-black border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-green-500 transition"
+              />
+            </div>
+
+            <!-- Bio / Description -->
+            <div>
+              <label for="edit-bio" class="block text-xs font-semibold text-neutral-300 mb-1">
+                Bio / Description
+              </label>
+              <textarea
+                id="edit-bio"
+                rows="3"
+                maxlength="256"
+                placeholder="Tell the community about yourself..."
+                class="w-full px-3.5 py-2.5 bg-black border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none transition"
+              ></textarea>
+              <div class="text-[10px] text-neutral-500 text-right mt-1">
+                <span id="edit-bio-char-count">256</span> chars remaining
+              </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="pt-2 flex items-center justify-end gap-2 border-t border-neutral-900">
+              <button
+                type="button"
+                id="btn-cancel-edit-profile"
+                class="px-4 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                id="btn-save-profile"
+                class="px-5 py-2 rounded-xl bg-green-500 hover:bg-green-400 text-black text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-md shadow-green-950/40"
+              >
+                <svg id="save-profile-spinner" class="hidden w-3 h-3 animate-spin text-black" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
 
       <!-- ======================================================== -->
-      <!-- MODAL: iOS Safari PWA Install Guide                      -->
+      <!-- MODAL 3: iOS PWA INSTALLATION GUIDE                      -->
       <!-- ======================================================== -->
-      <div id="pwa-ios-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div class="w-12 h-12 rounded-2xl bg-black border border-green-500/40 mx-auto flex items-center justify-center mb-3">
-            <img src="/icon.svg" alt="Postr" class="w-7 h-7" />
+      <div id="pwa-ios-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+        <div class="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-2xl p-5 shadow-2xl text-center">
+          <div class="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-800 mx-auto flex items-center justify-center mb-3 text-green-400">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
           </div>
           <h3 class="text-base font-bold text-white mb-2">Install Postr on iOS Safari</h3>
           <p class="text-xs text-neutral-400 mb-4 text-left space-y-2">
@@ -518,7 +911,7 @@
     </div>
 
     <!-- Toast Notification Container -->
-    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+    <div id="toast-container" class="fixed bottom-16 sm:bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <!-- PWA Service Worker Registration -->
     <script>
